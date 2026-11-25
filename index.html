@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sahur</title>
+<meta name="description" content="tung tung tung sahur. answer him. together. — terror multiplayer nos backrooms, roda em qualquer pc.">
+<meta property="og:title" content="sahur">
+<meta property="og:description" content="tung tung tung sahur. answer him. together.">
+<meta property="og:image" content="img/hero.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0b0a;
+    --ink: rgba(255, 255, 255, 0.92);
+    --soft: rgba(255, 255, 255, 0.58);
+    --faint: rgba(255, 255, 255, 0.32);
+    --line: rgba(255, 255, 255, 0.1);
+    --glass: rgba(20, 20, 18, 0.62);
+    --amber: #ffc740;
+    --yellow: #d8c46a;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; font-weight: 300;
+    text-transform: lowercase; -webkit-font-smoothing: antialiased; line-height: 1.55;
+  }
+  a { color: inherit; }
+  .hero {
+    position: relative; min-height: 92vh; display: flex; align-items: flex-end;
+    background: linear-gradient(180deg, rgba(11,11,10,0.15) 0%, rgba(11,11,10,0.35) 55%, var(--bg) 100%), url(img/hero.jpg) center / cover no-repeat;
+  }
+  .wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .hero .wrap { padding-bottom: 8vh; }
+  h1 { font-weight: 200; font-size: clamp(84px, 16vw, 180px); line-height: 0.9; margin: 0 0 14px; letter-spacing: -0.02em; }
+  .tag { color: var(--soft); font-size: 19px; margin: 0 0 34px; }
+  .dl { display: flex; flex-wrap: wrap; gap: 10px; }
+  .btn {
+    display: inline-flex; flex-direction: column; gap: 2px; min-width: 150px; padding: 13px 20px 12px;
+    background: var(--glass); border: 1px solid var(--line); border-radius: 16px; text-decoration: none;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: background .15s, transform .15s;
+  }
+  .btn:hover { background: rgba(40, 38, 30, 0.75); transform: translateY(-1px); }
+  .btn b { font-weight: 500; font-size: 17px; }
+  .btn span { color: var(--faint); font-size: 13px; }
+  .btn.main { background: var(--amber); color: #1a1406; border-color: transparent; }
+  .btn.main span { color: rgba(26, 20, 6, 0.6); }
+  .note { color: var(--faint); font-size: 13px; margin-top: 16px; }
+  section { padding: 72px 0 8px; }
+  h2 { font-weight: 200; font-size: 40px; margin: 0 0 18px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .card { background: #141412; border: 1px solid var(--line); border-radius: 20px; padding: 20px 22px; }
+  .card h3 { font-weight: 500; font-size: 15px; margin: 0 0 6px; color: var(--yellow); }
+  .card p { margin: 0; color: var(--soft); font-size: 15px; }
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 12px; }
+  .shots figure { margin: 0; }
+  .shots img { width: 100%; display: block; border-radius: 14px; border: 1px solid var(--line); }
+  .shots figcaption { color: var(--faint); font-size: 13px; padding: 6px 4px 0; }
+  ol, ul { color: var(--soft); padding-left: 20px; margin: 0; }
+  li { margin: 4px 0; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: #1c1c19; padding: 2px 6px; border-radius: 6px; text-transform: none; color: var(--ink); }
+  .k { display: inline-block; min-width: 26px; text-align: center; padding: 1px 7px; border-radius: 7px; background: var(--amber); color: #1a1406; font-weight: 500; font-size: 13px; }
+  footer { padding: 70px 0 50px; color: var(--faint); font-size: 13px; }
+  .sums { font-family: ui-monospace, Menlo, monospace; font-size: 11px; text-transform: none; color: var(--faint); word-break: break-all; }
+  @media (max-width: 560px) {
+    .hero { min-height: 86vh; }
+    .btn { min-width: calc(50% - 5px); }
+    h2 { font-size: 32px; }
+  }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <h1>sahur</h1>
+    <p class="tag">tung tung tung sahur. answer him. together.</p>
+    <div class="dl" id="dl">
+      <a class="btn" data-os="windows" href="sahur-windows.zip"><b>windows</b><span>10 / 11 · 32 mb</span></a>
+      <a class="btn" data-os="mac" href="sahur-mac.zip"><b>mac</b><span>intel + apple silicon · 43 mb</span></a>
+      <a class="btn" data-os="linux" href="sahur-linux.tar.gz"><b>linux</b><span>x86_64 · 33 mb</span></a>
+      <a class="btn" data-os="android" href="sahur-android.apk"><b>android</b><span>apk · 7.0+ · 44 mb</span></a>
+    </div>
+    <p class="note">grátis · multiplayer até 8 operativos · roda em qualquer pc com opengl 2.1 · <a href="#servidor">servidor dedicado</a></p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section>
+    <h2>o que é</h2>
+    <div class="grid">
+      <div class="card"><h3>os backrooms, juntos</h3><p>um escritório amarelo que não termina. carpete molhado, luz fluorescente zumbindo. vocês descem como operativos da hush, com os óculos nv-7 parafusados no crânio.</p></div>
+      <div class="card"><h3>ele chama três vezes</h3><p>"tung tung tung… sahur." alguém do grupo precisa responder antes da terceira chamada. ninguém responde: ele vem atrás de um de vocês. gritar à toa: ele vem atrás de quem gritou.</p></div>
+      <div class="card"><h3>o pior susto é o silencioso</h3><p>quando ele te pega, o som do mundo some. depois você assiste os outros pelos olhos deles, até ninguém mais estar lá dentro.</p></div>
+      <div class="card"><h3>qualquer pc</h3><p>luz pré-calculada na própria placa de vídeo enquanto o mapa carrega, modo potato em meia resolução. roda até sem placa de vídeo.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>imagens</h2>
+    <div class="shots">
+      <figure><img src="img/hallway.jpg" alt="corredor do escritório amarelo" loading="lazy"><figcaption>o escritório · luz pré-calculada com sombras suaves</figcaption></figure>
+      <figure><img src="img/together.jpg" alt="outro operativo e tung tung tung sahur" loading="lazy"><figcaption>outro operativo… e quem está atrás dele</figcaption></figure>
+      <figure><img src="img/operative.jpg" alt="operativo da hush" loading="lazy"><figcaption>operativo da hush · os tubos do nv-7 brilham na cor de cada jogador</figcaption></figure>
+      <figure><img src="img/tung.jpg" alt="tung tung tung sahur" loading="lazy"><figcaption>ele</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>como jogar junto</h2>
+    <div class="grid">
+      <div class="card"><h3>1 · lobby</h3><p>alguém clica <b>host a game</b>. quem está na mesma wi-fi vê o jogo em <b>join a game</b>; de fora, digita o ip.</p></div>
+      <div class="card"><h3>2 · prontos</h3><p>todo mundo clica <b>i'm ready</b> → contagem regressiva de 5 segundos → todos caem no mesmo mapa. o host pode forçar com <b>start now</b>.</p></div>
+      <div class="card"><h3>3 · saída</h3><p>achem a porta iluminada. setas de giz, só visíveis pelos óculos, apontam o caminho.</p></div>
+    </div>
+    <p class="note" style="font-size:15px;color:var(--soft)">amigos em outras casas: quem hospeda libera a porta <code>udp 7777</code> no roteador, ou todos entram na mesma vpn de jogos (radmin vpn, zerotier, tailscale), ou alguém roda o servidor dedicado.</p>
+  </section>
+
+  <section>
+    <h2>controles</h2>
+    <div class="grid">
+      <div class="card"><h3>pc</h3><p><span class="k">w a s d</span> andar · mouse olhar · <span class="k">q</span> responder "sahur" · <span class="k">e</span> interagir · <span class="k">ctrl</span> agachar · <span class="k">esc</span> pausa</p></div>
+      <div class="card"><h3>android</h3><p>dedão esquerdo anda · arrastar à direita olha · toque rápido responde quando ele chama · botões e / agachar / pausa</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>instalar</h2>
+    <div class="grid">
+      <div class="card"><h3>windows</h3><p>extraia e abra <b>Sahur.exe</b>. se aparecer "o windows protegeu o computador": mais informações → executar assim mesmo. deixe o firewall liberar redes privadas.</p></div>
+      <div class="card"><h3>mac</h3><p>arraste <b>Sahur.app</b> pra aplicativos. primeira vez: botão direito → abrir → abrir. se disser "danificado": <code>xattr -cr /Applications/Sahur.app</code></p></div>
+      <div class="card"><h3>linux</h3><p>extraia e rode <code>./sahur.sh</code> (ou <code>./sahur.sh potato</code> em pc bem fraco).</p></div>
+      <div class="card"><h3>android</h3><p>baixe o apk no celular e abra. o android pede pra permitir "instalar apps desconhecidos" pro navegador: permita e instale.</p></div>
+    </div>
+  </section>
+
+  <section id="servidor">
+    <h2>servidor dedicado</h2>
+    <div class="card">
+      <p>linux x86_64, sem placa de vídeo: perfeito pra uma vps ligada 24h.</p>
+      <p style="margin-top:10px"><code>tar xzf sahur-server-linux.tar.gz && ./sahur-server/run-server.sh "meu servidor"</code></p>
+      <p style="margin-top:10px">libere <code>udp 7777</code> (e <code>udp 7778</code> pra aparecer na lista da rede local). a rodada começa sozinha quando todos no lobby ficam prontos.</p>
+      <p style="margin-top:14px"><a class="btn" href="sahur-server-linux.tar.gz" style="display:inline-flex"><b>baixar servidor</b><span>linux · 31 mb</span></a></p>
+    </div>
+  </section>
+
+  <section>
+    <h2>requisitos</h2>
+    <ul>
+      <li>qualquer placa de vídeo com opengl 2.1 (intel gma x4500, hd graphics, geforce 8+, radeon hd 2000+) — ou nenhuma, no modo potato por software</li>
+      <li>2 gb de ram · fone de ouvido (sério)</li>
+      <li>android 7.0 ou mais novo</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>sahur · hush field division · feito com godot engine 3.6 (mit) e a fonte inter (ofl).</p>
+  <p class="sums" id="sums"></p>
+</footer>
+
+<script>
+  // highlight the download for this device
+  (function () {
+    var ua = navigator.userAgent.toLowerCase(), os = "windows";
+    if (ua.indexOf("android") >= 0) os = "android";
+    else if (ua.indexOf("mac") >= 0 && ua.indexOf("iphone") < 0 && ua.indexOf("ipad") < 0) os = "mac";
+    else if (ua.indexOf("linux") >= 0) os = "linux";
+    var b = document.querySelector('.btn[data-os="' + os + '"]');
+    if (b) { b.classList.add("main"); b.parentNode.insertBefore(b, b.parentNode.firstChild); }
+  })();
+  // checksums, if published next to the page
+  fetch("SHA256SUMS.txt").then(function (r) { return r.ok ? r.text() : ""; }).then(function (t) {
+    if (t) document.getElementById("sums").textContent = "sha256 · " + t.trim().split("\n").join("  ·  ");
+  }).catch(function () {});
+</script>
+</body>
+</html>
