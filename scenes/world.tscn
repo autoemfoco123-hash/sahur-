@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=2]
+
+[ext_resource path="res://scripts/world.gd" type="Script" id=1]
+[ext_resource path="res://scripts/view_fit.gd" type="Script" id=2]
+
+[node name="Root" type="Node"]
+
+[node name="VC" type="ViewportContainer" parent="."]
+script = ExtResource( 2 )
+anchor_right = 1.0
+anchor_bottom = 1.0
+stretch = true
+
+[node name="VP" type="Viewport" parent="VC"]
+size = Vector2( 1280, 720 )
+handle_input_locally = false
+audio_listener_enable_3d = true
+render_target_update_mode = 3
+shadow_atlas_size = 2048
+
+[node name="World" type="Spatial" parent="VC/VP"]
+script = ExtResource( 1 )

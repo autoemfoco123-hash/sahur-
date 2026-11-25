@@ -1,0 +1,7 @@
+# Godot 3
+.import/
+build/
+*.tmp
+# local signing material and toolchains (never commit keys)
+.sign/
+tools/__pycache__/
