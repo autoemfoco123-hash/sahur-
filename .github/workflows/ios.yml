@@ -1,0 +1,62 @@
+name: iOS build (unsigned .ipa)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot 4.4.1 and the iOS export template
+        run: |
+          curl -sSL -o godot.zip https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_macos.universal.zip
+          unzip -q godot.zip
+          curl -sSL -o tpl.tpz https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz
+          T="$HOME/Library/Application Support/Godot/export_templates/4.4.1.stable"
+          mkdir -p "$T"
+          unzip -q -j tpl.tpz "templates/ios.zip" "templates/version.txt" -d "$T"
+          rm tpl.tpz godot.zip
+
+      - name: Export the Xcode project
+        run: |
+          G="$PWD/Godot.app/Contents/MacOS/Godot"
+          "$G" --headless --path . --import || true
+          mkdir -p build/ios
+          "$G" --headless --path . --export-release "iOS" build/ios/Sahur.ipa || true
+          ls -la build/ios
+          test -d build/ios/Sahur.xcodeproj
+
+      - name: Build the app (unsigned)
+        run: |
+          cd build/ios
+          xcodebuild -project Sahur.xcodeproj -scheme Sahur -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath dd \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" \
+            build | tail -n 60
+          APP=$(find dd/Build/Products -maxdepth 3 -name "Sahur.app" | head -n 1)
+          echo "app: $APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry Sahur.ipa Payload
+          ls -la Sahur.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sahur-ipa
+          path: build/ios/Sahur.ipa
+
+      - name: Publish a release with the .ipa
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "ios-build-${{ github.run_number }}" build/ios/Sahur.ipa \
+            --title "sahur · iOS build ${{ github.run_number }}" \
+            --notes "Unsigned .ipa. Install it on your iPhone with Sideloadly (Windows/macOS) or AltStore, signing with your own Apple ID."

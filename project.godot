@@ -1,0 +1,34 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Sahur"
+config/description="tung tung tung sahur. answer him."
+run/main_scene="res://scenes/menu.tscn"
+config/features=PackedStringArray("4.4", "Forward Plus")
+config/icon="res://icon.png"
+
+[autoload]
+
+Game="*res://scripts/game.gd"
+Audio="*res://scripts/audio.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/handheld/orientation=4
+
+[physics]
+
+common/physics_ticks_per_second=60
+3d/physics_engine="GodotPhysics3D"
+
+[rendering]
+
+anti_aliasing/quality/screen_space_aa=1
+lights_and_shadows/positional_shadow/atlas_size=4096
+environment/defaults/default_clear_color=Color(0, 0, 0, 1)
+textures/vram_compression/import_etc2_astc=true
+renderer/rendering_method.mobile="mobile"
