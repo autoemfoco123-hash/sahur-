@@ -8,7 +8,7 @@ var _vals = {}
 
 
 func _ready() -> void:
-	var s = UI.box(Color(0.1, 0.1, 0.11, 0.9), 22)
+	var s = UI.box(Color(0.08, 0.08, 0.09, 0.97), 22)
 	s.content_margin_left = 26
 	s.content_margin_right = 26
 	s.content_margin_top = 22
@@ -20,7 +20,8 @@ func _ready() -> void:
 	v.add_constant_override("separation", 12)
 	add_child(v)
 	v.add_child(UI.label("settings", 32, UI.WHITE, "thin"))
-	_slider(v, "mouse sensitivity", "sensitivity", 0.03, 1.0, 0.01)
+	var touch = OS.has_feature("mobile") or Game.force_touch
+	_slider(v, "look sensitivity" if touch else "mouse sensitivity", "sensitivity", 0.03, 1.0, 0.01)
 	_slider(v, "volume", "volume", 0.0, 1.0, 0.01)
 	_slider(v, "post-processing", "post", 0.0, 1.5, 0.05)
 	_slider(v, "fisheye", "fisheye", 0.0, 1.0, 0.05)
@@ -37,14 +38,17 @@ func _ready() -> void:
 	ob.connect("item_selected", self, "_on_gfx")
 	q.add_child(ob)
 	v.add_child(q)
-	var f = HBoxContainer.new()
-	f.add_child(_name("fullscreen"))
-	var cb = CheckButton.new()
-	cb.pressed = bool(Game.settings.fullscreen)
-	cb.connect("toggled", self, "_on_fullscreen")
-	f.add_child(cb)
-	v.add_child(f)
-	v.add_child(UI.label("wasd move · mouse look · e interact · q shout\nctrl crouch · space jump · esc pause", 13, UI.FAINT))
+	if not touch:
+		var f = HBoxContainer.new()
+		f.add_child(_name("fullscreen"))
+		var cb = CheckButton.new()
+		cb.pressed = bool(Game.settings.fullscreen)
+		cb.connect("toggled", self, "_on_fullscreen")
+		f.add_child(cb)
+		v.add_child(f)
+		v.add_child(UI.label("wasd move · mouse look · e interact · q answer him\nctrl crouch · space jump · esc pause", 13, UI.FAINT))
+	else:
+		v.add_child(UI.label("left thumb walks · drag on the right to look\nquick tap answers him · e / crouch / pause buttons", 13, UI.FAINT))
 	v.add_child(UI.button("‹ back", self, "_back", [], 18))
 
 

@@ -20,6 +20,7 @@ var _occ_t = 0.0
 var _dist: AudioEffectDistortion
 var _lp: AudioEffectLowPassFilter
 var _reverb: AudioEffectReverb
+var _scaring = false
 
 
 func _ready() -> void:
@@ -103,12 +104,44 @@ func set_breath(x: float) -> void:
 	_breath_target = -80.0 if x < 0.05 else lerp(-26.0, -6.0, clamp(x, 0.0, 1.0))
 
 
-## Total silence (master muted). Used for the jumpscare.
+## Total silence (master muted). Used right before the jumpscare. Turning it off also ends
+## a scare (everything comes back exactly as it was).
 func silence_all(on: bool) -> void:
-	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), on)
+	var m = AudioServer.get_bus_index("Master")
+	AudioServer.set_bus_mute(m, on)
 	if on:
 		_breath_target = -80.0
 		_breath.volume_db = -80.0
+	elif _scaring:
+		_scaring = false
+		AudioServer.set_bus_mute(AudioServer.get_bus_index("SFX"), false)
+		AudioServer.set_bus_mute(AudioServer.get_bus_index("Amb"), false)
+		for i in AudioServer.get_bus_effect_count(m):
+			AudioServer.set_bus_effect_enabled(m, i, true)
+
+
+## The jumpscare: every other sound is cut and nothing on the master squashes it.
+## The sample itself is already clipped at full scale: as loud as digital audio goes.
+func scare(sname: String, vol_db := 0.0) -> AudioStreamPlayer:
+	_scaring = true
+	var m = AudioServer.get_bus_index("Master")
+	AudioServer.set_bus_mute(AudioServer.get_bus_index("SFX"), true)
+	AudioServer.set_bus_mute(AudioServer.get_bus_index("Amb"), true)
+	for i in AudioServer.get_bus_effect_count(m):
+		var fx = AudioServer.get_bus_effect(m, i)
+		# keep only the final limiter (protects against inter-sample overs)
+		AudioServer.set_bus_effect_enabled(m, i, fx is AudioEffectLimiter)
+	_breath_target = -80.0
+	_breath.volume_db = -80.0
+	AudioServer.set_bus_mute(m, false)
+	var p = AudioStreamPlayer.new()
+	p.stream = get_stream(sname)
+	p.volume_db = vol_db
+	p.bus = "Master"
+	add_child(p)
+	p.play()
+	p.connect("finished", p, "queue_free")
+	return p
 
 
 func set_silence(on: bool) -> void:

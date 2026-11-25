@@ -39,6 +39,11 @@ var _cull_t = 0.0
 var _spec_t = 0.0
 var _note_open_cb = false
 var _rig: Spatial
+var _scare = 0            # jumpscare phase: 0 none · 1 dark silence · 2 screaming
+var _scare_t = 0.0
+var _scare_m: Spatial
+var _scare_mouth: MeshInstance
+var _scare_base = Vector3.ZERO
 
 
 func _ready() -> void:
@@ -317,7 +322,8 @@ func net_event(type: String, args: Array) -> void:
 			elif hud:
 				hud.subtitle("%s became rot." % Net.pname(pid), 3.5)
 				if not dying:
-					Audio.play("tung", -10.0, 0.45)
+					var at = avatars[pid].global_transform.origin + Vector3(0, 1.6, 0) if avatars.has(pid) else player.global_transform.origin
+					Audio.play_at("scare_scream_far", at, self, 8.0, 1.0, 120.0)
 		"escaped":
 			var pid: int = args[0]
 			if pid == me and player:
@@ -428,6 +434,8 @@ func _process(delta: float) -> void:
 		_pulse = 1.0
 	_pulse = max(0.0, _pulse - delta * 3.0)
 	post.set_shader_param("pulse", _pulse)
+	if _scare == 2:
+		_scare_frame(delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -484,7 +492,9 @@ func close_note() -> void:
 	player.controls = not my_out and not dying and not completing
 
 
-# ------------------------------------------------------------------ death (the silent jumpscare)
+# ------------------------------------------------------------------ death (the jumpscare)
+## A third of a second of nothing at all, then his face is on you, screaming as loud as
+## digital audio goes. Then a hard cut to black and silence.
 func kill(_id: String, msg: String) -> void:
 	if dying or completing or my_out or player == null:
 		return
@@ -495,8 +505,10 @@ func kill(_id: String, msg: String) -> void:
 		hud.hide_note()
 	hud.show_stats(false)
 	hud.set_prompt("")
-	# The worst jumpscare is the silent one: every sound in the world stops.
+	hud.island.modulate.a = 0.0
+	hud._island_t = 0.0
 	Audio.silence_all(true)
+	hud.fade_rect.color = Color(0, 0, 0, 1)
 	for e in get_tree().get_nodes_in_group("hostile"):
 		e.visible = false
 	_rig = Spatial.new()
@@ -504,7 +516,25 @@ func kill(_id: String, msg: String) -> void:
 	var m = TungModel.build()
 	_rig.add_child(m)
 	m.rotation.y = PI
-	m.translation = Vector3(0, -0.02, -0.62) - Vector3(-FACE.x, FACE.y, -FACE.z)
+	# aim between the eyes and the mouth so the whole screaming face fills the view
+	_scare_base = Vector3(0, -0.02, -0.52) - Vector3(0, 2.13, 0.4)
+	m.translation = _scare_base - Vector3(0, 0, 0.45)
+	# wide awake: no lids, bulging eyes, and a mouth tearing open
+	for n in ["lidL", "lidR"]:
+		var lid = m.find_node(n, true, false)
+		if lid:
+			lid.visible = false
+	for n in ["eyeL", "eyeR"]:
+		var eye = m.find_node(n, true, false)
+		if eye:
+			eye.scale = Vector3.ONE * 1.3
+	var body = m.find_node("body", true, false)
+	_scare_mouth = MeshInstance.new()
+	_scare_mouth.mesh = Models.sphere(1.0, -1, 24, 12)
+	_scare_mouth.material_override = Mats.unshaded(Color(0.035, 0.0, 0.0))
+	body.add_child(_scare_mouth)
+	_scare_mouth.translation = Vector3(0, TungModel.EY - 0.25, -TungModel.R + 0.012)
+	_scare_mouth.scale = Vector3(0.13, 0.001, 0.05)
 	var l = SpotLight.new()
 	l.light_color = Color(1, 0.97, 0.9)
 	l.light_energy = 9.0
@@ -513,10 +543,22 @@ func kill(_id: String, msg: String) -> void:
 	_rig.add_child(l)
 	l.translation = Vector3(0, 1.6, -0.75)
 	l.rotation_degrees = Vector3(-88, 0, 0)
-	# It doesn't lunge. It doesn't scream. It just looks at you, and tilts its head.
+	var under = OmniLight.new()
+	under.light_color = Color(1.0, 0.86, 0.78)
+	under.light_energy = 2.4
+	under.omni_range = 1.6
+	_rig.add_child(under)
+	under.translation = Vector3(0, -0.35, -0.15)
+	_scare_m = m
+	m.visible = false
+	_scare = 1
+	_scare_t = 0.0
 	var tw = create_tween()
-	tw.tween_property(m, "rotation:z", deg2rad(9.0), 1.9).set_trans(Tween.TRANS_SINE)
-	tw.parallel().tween_property(m, "translation:z", m.translation.z + 0.12, 1.9)
+	tw.tween_interval(0.32)
+	tw.tween_callback(self, "_scare_hit")
+	tw.tween_interval(1.95)
+	tw.tween_callback(self, "_scare_cut")
+	tw.tween_interval(0.8)
 	tw.tween_callback(self, "_death_screen", [msg])
 	tw.tween_interval(2.6)
 	tw.tween_callback(self, "_death_hint", [msg])
@@ -527,10 +569,52 @@ func kill(_id: String, msg: String) -> void:
 		tw.tween_callback(Game, "restart_level")
 
 
+func _scare_hit() -> void:
+	_scare = 2
+	_scare_t = 0.0
+	hud.fade_rect.color = Color(0, 0, 0, 0)
+	if is_instance_valid(_scare_m):
+		_scare_m.visible = true
+	Audio.scare("scare_scream", 0.0)
+	flash(1.0)
+	player.add_trauma(1.0)
+	if OS.has_feature("mobile"):
+		Input.vibrate_handheld(1900)
+
+
+## Cut, not fade: black and dead silence.
+func _scare_cut() -> void:
+	_scare = 0
+	hud.fade_rect.color = Color(0, 0, 0, 1)
+	Audio.silence_all(true)
+	if is_instance_valid(_rig):
+		_rig.queue_free()
+
+
+## Every frame while he screams: he lunges in, twitches, the mouth stretches, the picture strobes.
+func _scare_frame(delta: float) -> void:
+	_scare_t += delta
+	if not is_instance_valid(_scare_m):
+		return
+	var k = clamp(_scare_t / 0.11, 0.0, 1.0)
+	k = 1.0 - (1.0 - k) * (1.0 - k)
+	var p = _scare_base - Vector3(0, 0, 0.45) * (1.0 - k) + Vector3(0, 0, 0.04) * k
+	p += Vector3(rand_range(-1, 1) * 0.024, rand_range(-1, 1) * 0.024, rand_range(-1, 1) * 0.014)
+	_scare_m.translation = p
+	_scare_m.rotation = Vector3(rand_range(-0.07, 0.07), PI + rand_range(-0.06, 0.06), rand_range(-0.16, 0.16))
+	var open = clamp(_scare_t / 0.09, 0.0, 1.0)
+	_scare_mouth.scale = Vector3(0.12 + 0.025 * sin(_scare_t * 41.0), 0.001 + (0.1 + 0.02 * sin(_scare_t * 57.0)) * open, 0.05)
+	player.add_trauma(delta * 6.0)
+	post.set_shader_param("madness", 1.0)
+	post.set_shader_param("danger", 1.0)
+	post.set_shader_param("flash", 0.6 if fmod(_scare_t, 0.09) < 0.035 else 0.0)
+
+
 func _death_screen(msg: String) -> void:
 	if is_instance_valid(_rig):
 		_rig.queue_free()
 	hud.death("you became rot", msg)
+	hud.fade_rect.color = Color(0, 0, 0, 0)
 
 
 func _death_hint(msg: String) -> void:

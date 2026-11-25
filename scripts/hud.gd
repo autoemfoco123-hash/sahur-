@@ -468,7 +468,7 @@ func _process(delta: float) -> void:
 	if world == null or world.player == null:
 		return
 	var on: bool = world.player.flashlight_on
-	nv_root.visible = on and not death_root.visible
+	nv_root.visible = on and not death_root.visible and world._scare == 0
 	if gyro.player == null:
 		gyro.player = world.player
 	if on:

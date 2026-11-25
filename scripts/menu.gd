@@ -105,8 +105,9 @@ func _setup() -> void:
 	rect.material = post
 	pl.add_child(rect)
 	_build_ui()
-	Audio.ambient("amb_hall", -8.0)
-	Audio.ambient("", 0, 1)
+	# the menu theme, with the fluorescent hum of the hallway underneath
+	Audio.ambient("amb_menu", -2.0, 0)
+	Audio.ambient("amb_hall", -17.0, 1)
 	Audio.set_madness(0.0)
 
 
@@ -210,7 +211,7 @@ func _build_ui() -> void:
 	settings.rect_position = Vector2(80, 140)
 	root.add_child(settings)
 	settings.connect("closed", self, "_close_settings")
-	var hint = UI.label("headphones recommended · don't play at 3 am · %s" % Net.VERSION, 13, UI.FAINT)
+	var hint = UI.label("headphones recommended · he screams loud · don't play at 3 am · %s" % Net.VERSION, 13, UI.FAINT)
 	hint.anchor_top = 1.0
 	hint.anchor_bottom = 1.0
 	hint.margin_left = 90
@@ -376,6 +377,21 @@ func _refresh_lan() -> void:
 		if not f.same:
 			t += "   (other version)"
 		lan_list.add_child(UI.button(t, self, "_do_join", [ip], 18))
+
+
+func _open_settings() -> void:
+	menu.visible = false
+	status.text = ""
+	settings.visible = true
+
+
+func _close_settings() -> void:
+	settings.visible = false
+	menu.visible = true
+
+
+func _quit() -> void:
+	get_tree().quit()
 
 
 func _process(delta: float) -> void:
