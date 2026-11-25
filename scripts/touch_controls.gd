@@ -3,7 +3,8 @@ extends CanvasLayer
 ## iPhone controls, same minimal language as the hud:
 ## left thumb  = floating analog joystick (walk)
 ## right thumb = drag to look
-## buttons     = sahur (shout) · e (interact, only when something is interactable) · crouch · pause
+## tap         = answer him (only while he is calling)
+## buttons     = e (interact, only when something is interactable) · crouch · pause
 
 var world: World
 var _stick_id := -1
@@ -11,6 +12,8 @@ var _stick_origin := Vector2.ZERO
 var _stick_vec := Vector2.ZERO
 var _look_id := -1
 var _look_last := Vector2.ZERO
+var _look_start := Vector2.ZERO
+var _look_t0 := 0
 var _crouch := false
 var _base: Control
 var _knob: Control
@@ -36,8 +39,7 @@ func _ready() -> void:
 	_base.visible = false
 	_knob.visible = false
 	var vp := get_viewport().get_visible_rect().size
-	_add_button("sahur", "shout", Vector2(vp.x - 140, vp.y - 120), 62.0, UI.AMBER, Color(0.1, 0.08, 0.02))
-	_btn_e = _add_button("e", "interact", Vector2(vp.x - 285, vp.y - 95), 42.0, Color(1, 1, 1, 0.85), Color(0.08, 0.08, 0.08))
+	_btn_e = _add_button("e", "interact", Vector2(vp.x - 130, vp.y - 110), 46.0, Color(1, 1, 1, 0.85), Color(0.08, 0.08, 0.08))
 	_add_button("crouch", "", Vector2(vp.x - 115, vp.y - 285), 34.0, Color(1, 1, 1, 0.25), Color(1, 1, 1, 0.9)).pressed.connect(func():
 		_crouch = not _crouch
 		if _crouch:
@@ -52,7 +54,7 @@ func _ready() -> void:
 
 func _relayout() -> void:
 	var vp := get_viewport().get_visible_rect().size
-	var spots := [Vector2(vp.x - 140, vp.y - 120), Vector2(vp.x - 285, vp.y - 95), Vector2(vp.x - 115, vp.y - 285), Vector2(vp.x - 90, 150)]
+	var spots := [Vector2(vp.x - 130, vp.y - 110), Vector2(vp.x - 115, vp.y - 285), Vector2(vp.x - 90, 150)]
 	for i in _buttons.size():
 		var b := _buttons[i]
 		b.position = spots[i] - Vector2(b.get_meta("r"), b.get_meta("r"))
@@ -141,6 +143,8 @@ func _input(event: InputEvent) -> void:
 			elif st.position.x >= vp.x * 0.45 and _look_id == -1:
 				_look_id = st.index
 				_look_last = st.position
+				_look_start = st.position
+				_look_t0 = Time.get_ticks_msec()
 		else:
 			if st.index == _stick_id:
 				_stick_id = -1
@@ -150,6 +154,17 @@ func _input(event: InputEvent) -> void:
 				_apply_stick()
 			elif st.index == _look_id:
 				_look_id = -1
+				# A quick tap (no drag) while he is calling = you answer him.
+				var quick := Time.get_ticks_msec() - _look_t0 < 300 and st.position.distance_to(_look_start) < 18.0
+				if quick and _he_is_calling():
+					var ev := InputEventAction.new()
+					ev.action = "shout"
+					ev.pressed = true
+					Input.parse_input_event(ev)
+					var ev2 := InputEventAction.new()
+					ev2.action = "shout"
+					ev2.pressed = false
+					Input.parse_input_event(ev2)
 	elif event is InputEventScreenDrag:
 		var sd := event as InputEventScreenDrag
 		if sd.index == _stick_id:
@@ -167,6 +182,11 @@ func _input(event: InputEvent) -> void:
 			var s: float = float(Game.settings.sensitivity) * 0.018
 			world.player._yaw -= d.x * s
 			world.player._pitch = clampf(world.player._pitch - d.y * s, -1.45, 1.45)
+
+
+func _he_is_calling() -> bool:
+	var l = world.level
+	return l != null and "calling" in l and l.calling and not l.answered
 
 
 func _place_stick() -> void:

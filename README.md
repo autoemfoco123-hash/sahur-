@@ -54,12 +54,14 @@ GitHub, exporta o projeto Xcode pelo Godot e compila um `.ipa` **não assinado**
 Para instalar sem Mac:
 
 1. Baixe o `Sahur.ipa` da página de Releases.
-2. Instale o **Sideloadly** (Windows ou macOS) ou o **AltStore**.
-3. Conecte o iPhone, arraste o `.ipa` e entre com a sua Apple ID (uma conta grátis serve).
+2. Instale um sideloader. No **Linux**: PlumeImpactor (Flathub `dev.khcrysalis.PlumeImpactor`,
+   precisa do `usbmuxd`). No Windows/macOS: Sideloadly ou AltStore.
+3. Conecte o iPhone pelo cabo, arraste o `.ipa` e entre com a sua Apple ID (uma conta grátis serve).
 4. No iPhone: Ajustes → Geral → VPN e Gerenciamento de Dispositivos → confie no seu perfil.
 5. No iOS 16 ou mais novo, ative também o Modo de Desenvolvedor (Ajustes → Privacidade e Segurança).
 
 Com Apple ID grátis o app precisa ser reinstalado a cada 7 dias.
 
-No iPhone: joystick à esquerda para andar, arraste à direita para olhar, botão **sahur** para
-responder, **e** para interagir, **crouch** para agachar e **ii** para pausar.
+No iPhone: joystick à esquerda para andar, arraste à direita para olhar. Quando o Tung chamar
+("tung tung tung… sahur"), **toque na tela** para responder. **e** interage, **crouch** agacha
+e **ii** pausa.

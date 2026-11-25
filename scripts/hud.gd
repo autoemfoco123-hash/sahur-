@@ -525,7 +525,7 @@ func show_stats(on: bool) -> void:
 
 func objective(t: String) -> void:
 	if TouchControls.wanted():
-		t = t.replace("(q)", "(sahur button)")
+		t = t.replace("answer (q)", "tap the screen to answer")
 	_set_island(t, true)
 	_island_t = 8.0
 

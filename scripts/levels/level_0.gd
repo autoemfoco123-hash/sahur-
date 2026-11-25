@@ -87,7 +87,7 @@ func build() -> void:
 	# Player
 	var sp := _cell(start)
 	spawn_player(sp + Vector3(0, 0.2, 0), -PI * 0.75)
-	note(sp + Vector3(0.7, 0.0, -0.7), "hush · descent briefing · operative 03\n\nyou are below the feed now. this is the rot.\nthe nv-7 goggles are bolted to your skull. they do not come off.\nnaked eyes don't work down here. we tried.\n\nsector 0 is held by subject 'tung'. he calls three times.\nanswer him (q). shout sahur before the third call ends.\nstay quiet, and he comes looking for the quiet one.\n\nwe do not speak of it. we watch it.")
+	note(sp + Vector3(0.7, 0.0, -0.7), "hush · descent briefing · operative 03\n\nyou are below the feed now. this is the rot.\nthe nv-7 goggles are bolted to your skull. they do not come off.\nnaked eyes don't work down here. we tried.\n\nsector 0 is held by subject 'tung'. he calls three times.\nanswer him: shout sahur (q, or tap the screen on a phone)\nbefore the third call ends.\nstay quiet, and he comes looking for the quiet one.\n\nwe do not speak of it. we watch it.")
 	var pts := scatter_points(6, sp, 14.0, 0.0)
 	if pts.size() > 0:
 		note(pts[0], "do not shout when he isn't calling.\nhe hates being called for nothing.\ni learned that the hard way.\n\nall the lights are on. all of them. all the time.\nthe carpet is wet and nobody knows why.\n\n- operative 02")
@@ -305,7 +305,8 @@ func _knock(k: int) -> void:
 		if not answered:
 			Audio.play_at("sahur_low", tung.global_position + Vector3(0, 2, 0), world, 6.0, 1.0, 200.0)
 			Audio.play("sahur_low", -14.0))
-	world.hud.subtitle("tung  tung  tung …  sahur      (%d/3)" % (k + 1), 2.4)
+	var hint := "      · tap to answer" if TouchControls.wanted() else ""
+	world.hud.subtitle("tung  tung  tung …  sahur      (%d/3)%s" % [k + 1, hint], 2.4)
 
 
 func _on_shout() -> void:
