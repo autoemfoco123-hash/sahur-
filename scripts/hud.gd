@@ -29,6 +29,13 @@ var nv_range: Label
 var nv_hdg: Label
 var gyro
 var spectate_label: Label
+var photo_box: PanelContainer
+var photo_img: TextureRect
+var photo_score: Label
+var photo_name: Label
+var photo_grade: Label
+var evidence: Label
+var _photo_tw
 var roster: Label
 var _roster_t = 0.0
 var _left: Control
@@ -177,6 +184,8 @@ func _ready() -> void:
 	roster = UI.label("", 12, Color(1, 1, 1, 0.62), "light", Label.ALIGN_RIGHT)
 	tr.add_child(UI.label(" ", 8))
 	tr.add_child(roster)
+	evidence = UI.label("evidence: none yet", 12, UI.AMBER, "medium", Label.ALIGN_RIGHT)
+	tr.add_child(evidence)
 
 	# bottom-left: brain cells
 	_left = _widget(root, true)
@@ -303,6 +312,52 @@ func _ready() -> void:
 	nv.add_child(UI.label("e  to close", 12, Color(0.6, 0.58, 0.55), "light", Label.ALIGN_CENTER))
 	note_panel.visible = false
 	root.add_child(note_panel)
+
+	# the last photo, like a polaroid sliding out of the camera
+	photo_box = PanelContainer.new()
+	var pst2 = StyleBoxFlat.new()
+	pst2.bg_color = Color(0.95, 0.94, 0.9)
+	pst2.set_corner_radius_all(5)
+	pst2.content_margin_left = 10
+	pst2.content_margin_right = 10
+	pst2.content_margin_top = 10
+	pst2.content_margin_bottom = 12
+	pst2.shadow_color = Color(0, 0, 0, 0.5)
+	pst2.shadow_size = 18
+	photo_box.add_stylebox_override("panel", pst2)
+	photo_box.anchor_left = 1.0
+	photo_box.anchor_right = 1.0
+	photo_box.anchor_top = 0.5
+	photo_box.anchor_bottom = 0.5
+	photo_box.margin_left = -380
+	photo_box.margin_right = -40
+	photo_box.margin_top = -170
+	photo_box.margin_bottom = 90
+	photo_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	photo_box.visible = false
+	root.add_child(photo_box)
+	var pv2 = VBoxContainer.new()
+	pv2.add_constant_override("separation", 6)
+	photo_box.add_child(pv2)
+	photo_img = TextureRect.new()
+	photo_img.rect_min_size = Vector2(320, 180)
+	photo_img.expand = true
+	photo_img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	pv2.add_child(photo_img)
+	var prow = HBoxContainer.new()
+	prow.add_constant_override("separation", 12)
+	pv2.add_child(prow)
+	photo_score = UI.label("0", 40, Color(0.08, 0.08, 0.08), "thin")
+	photo_score.add_color_override("font_color_shadow", Color(0, 0, 0, 0))
+	prow.add_child(photo_score)
+	var pcol = VBoxContainer.new()
+	prow.add_child(pcol)
+	photo_name = UI.label("", 14, Color(0.12, 0.12, 0.12), "medium")
+	photo_name.add_color_override("font_color_shadow", Color(0, 0, 0, 0))
+	pcol.add_child(photo_name)
+	photo_grade = UI.label("", 13, Color(0.38, 0.36, 0.33))
+	photo_grade.add_color_override("font_color_shadow", Color(0, 0, 0, 0))
+	pcol.add_child(photo_grade)
 
 	# spectating line
 	spectate_label = UI.label("", 16, UI.WHITE, "light", Label.ALIGN_CENTER)
@@ -491,6 +546,28 @@ func show_stats(on: bool) -> void:
 	_left.visible = on
 	_right.visible = on
 	crosshair.visible = on
+
+
+## A photo was taken: show it with its score, then let it slide away.
+func show_photo(tex: Texture, r: Dictionary, is_best: bool, best: Dictionary) -> void:
+	photo_img.texture = tex
+	photo_score.text = str(r.score)
+	photo_name.text = r.name.to_lower()
+	photo_grade.text = (r.grade + ("   new best" if is_best else "")).to_lower()
+	photo_box.visible = true
+	photo_box.modulate.a = 0.0
+	photo_box.rect_rotation = rand_range(-3.0, 3.0)
+	if _photo_tw and _photo_tw.is_valid():
+		_photo_tw.kill()
+	_photo_tw = create_tween()
+	_photo_tw.tween_property(photo_box, "modulate:a", 1.0, 0.15)
+	_photo_tw.tween_interval(3.2)
+	_photo_tw.tween_property(photo_box, "modulate:a", 0.0, 0.5)
+	_photo_tw.tween_callback(photo_box, "hide")
+	var parts = PoolStringArray()
+	for k in best:
+		parts.append("%s %d" % [k, best[k]])
+	evidence.text = ("evidence: " + parts.join(" · ")) if parts.size() > 0 else "evidence: none yet"
 
 
 func set_spectate(t: String) -> void:

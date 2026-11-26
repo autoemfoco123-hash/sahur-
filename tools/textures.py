@@ -153,6 +153,100 @@ def panel():
     print("panel.png", a.shape)
 
 
+# ------------------------------------------------------------------ sector 1: the key rooms
+def polar(n, cell):
+    x, y = coords(n)
+    cx = np.mod(x, cell) - cell / 2
+    cy = np.mod(y, cell) - cell / 2
+    return np.sqrt(cx * cx + cy * cy) / (cell / 2), np.arctan2(cy, cx), cx, cy
+
+
+def wallpaper_green():
+    """Old hotel damask: dark green with a faded olive-gold medallion every 25 cm."""
+    base = np.array([0.15, 0.22, 0.16])
+    ink = np.array([0.36, 0.38, 0.22])
+    r, th, cx, cy = polar(N, 128)
+    petals = np.clip(np.cos(4 * th) * 0.5 + 0.5, 0, 1) ** 2
+    medal = np.exp(-((r - 0.55) ** 2) / 0.012) * (0.4 + 0.6 * petals)
+    medal += np.exp(-(r ** 2) / 0.02) * 0.8
+    medal += np.exp(-((r - 0.85) ** 2) / 0.002) * 0.5 * (np.cos(16 * th) > 0.3)
+    # offset second grid (classic half-drop)
+    r2, th2, _, _ = polar(N, 128)
+    r2 = np.roll(np.roll(r2, 64, 0), 64, 1)
+    th2 = np.roll(np.roll(th2, 64, 0), 64, 1)
+    medal += np.exp(-((r2 - 0.32) ** 2) / 0.006) * (np.cos(6 * th2) * 0.5 + 0.5) * 0.6
+    wear = np.clip(0.75 + 0.35 * noise(N, 40, seed=61), 0.2, 1.1)
+    m = np.clip(medal, 0, 1) * wear * 0.75
+    rgb = base[None, None, :] * (1 - m[..., None]) + ink[None, None, :] * m[..., None]
+    rgb *= (1.0 + noise(N, 1.0, 4.0, seed=62) * 0.02 + noise(N, 60, seed=63) * 0.05)[..., None]
+    save("wallpaper_green.png", rgb)
+
+
+def carpet_red():
+    """Hotel carpet: burgundy with a gold-and-navy geometric repeat every 25 cm."""
+    x, y = coords(N)
+    base = np.array([0.34, 0.06, 0.07])
+    gold = np.array([0.62, 0.45, 0.16])
+    navy = np.array([0.08, 0.08, 0.16])
+    cell = 128
+    u = np.mod(x, cell) / cell - 0.5
+    v = np.mod(y, cell) / cell - 0.5
+    dia = np.abs(u) + np.abs(v)
+    ring = np.exp(-((dia - 0.36) ** 2) / 0.0012)
+    core = (dia < 0.12).astype(float)
+    cross = (np.minimum(np.abs(u), np.abs(v)) < 0.02).astype(float) * (dia > 0.42)
+    rgb = base[None, None, :] * np.ones((N, N, 1))
+    rgb = rgb * (1 - ring[..., None] * 0.85) + gold * ring[..., None] * 0.85
+    rgb = rgb * (1 - core[..., None]) + navy * core[..., None]
+    rgb = rgb * (1 - cross[..., None] * 0.7) + gold * cross[..., None] * 0.7
+    pile = 1.0 + noise(N, 1.1, seed=71) * 0.12 + noise(N, 3.0, seed=72) * 0.05 + noise(N, 50, seed=73) * 0.06
+    rgb *= pile[..., None]
+    save("carpet_red.png", rgb)
+
+
+def plaster():
+    """Ceiling plaster: warm off-white, soft trowel marks, hairline cracks."""
+    lum = 1.0 + noise(N, 30, seed=81) * 0.03 + noise(N, 2.0, seed=82) * 0.015
+    crack = np.exp(-(noise(N, 14, seed=83) ** 2) / 0.0015) * (noise(N, 60, seed=84) > 0.6)
+    lum -= crack * 0.18
+    rgb = np.array([0.8, 0.76, 0.68])[None, None, :] * lum[..., None]
+    save("plaster.png", rgb)
+
+
+def wood():
+    """Dark stained door wood, vertical grain."""
+    x, y = coords(N)
+    g = noise(N, 3.0, 60.0, seed=91)
+    lines = np.sin((x + g * 6.0) * 2 * np.pi / 9.0) * 0.5 + 0.5
+    lum = 0.85 + 0.18 * noise(N, 12, 90, seed=92) + 0.08 * lines ** 6
+    rgb = np.array([0.27, 0.13, 0.065])[None, None, :] * lum[..., None]
+    save("wood.png", rgb)
+
+
+def brass():
+    n = 64
+    lum = 1.0 + noise(n, 4, seed=95) * 0.06
+    rgb = np.array([0.78, 0.6, 0.26])[None, None, :] * lum[..., None]
+    a = np.clip(rgb * 255.0 + 0.5, 0, 255).astype(np.uint8)
+    Image.fromarray(a, "RGB").save(f"{OUT}/brass.png")
+    print("brass.png")
+
+
+def lamp_round():
+    """Round frosted ceiling lamp on a dark plate (fills one 60 cm lens quad)."""
+    n = 128
+    x, y = coords(n)
+    r = np.sqrt((x - 63.5) ** 2 + (y - 63.5) ** 2) / 64.0
+    glass = np.clip(1.0 - (r / 0.7) ** 4, 0, 1)
+    lum = 0.2 + 0.8 * glass * (0.92 + 0.08 * np.cos(r * 30))
+    ring = np.exp(-((r - 0.72) ** 2) / 0.0008) * 0.35
+    rgb = np.stack([lum + ring, lum * 0.9 + ring * 0.9, lum * 0.7 + ring * 0.6], -1)
+    rgb[r > 0.76] = np.array([0.16, 0.15, 0.14])
+    a = np.clip(rgb * 255.0 + 0.5, 0, 255).astype(np.uint8)
+    Image.fromarray(a, "RGB").save(f"{OUT}/lamp_round.png")
+    print("lamp_round.png")
+
+
 if __name__ == "__main__":
     import os
     os.makedirs(OUT, exist_ok=True)
@@ -160,3 +254,9 @@ if __name__ == "__main__":
     carpet()
     ceiling()
     panel()
+    wallpaper_green()
+    carpet_red()
+    plaster()
+    wood()
+    brass()
+    lamp_round()

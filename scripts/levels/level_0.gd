@@ -23,6 +23,8 @@ var walls_h = {}
 var walls_v = {}
 var _wall_list = []
 var bake
+var open_ratio = 0.5      # share of maze walls knocked out (open-plan office)
+var pillar_ratio = 0.45   # free-standing pillars at empty corners
 
 
 func build() -> void:
@@ -184,10 +186,10 @@ func _layout() -> void:
 		_open(c, nx)
 		stack.append(nx)
 	for k in walls_h.keys():
-		if rng.randf() < 0.5:
+		if rng.randf() < open_ratio:
 			walls_h.erase(k)
 	for k in walls_v.keys():
-		if rng.randf() < 0.5:
+		if rng.randf() < open_ratio:
 			walls_v.erase(k)
 
 
@@ -239,7 +241,7 @@ func _build_walls(om) -> void:
 	for x in range(1, CW):
 		for y in range(1, CH):
 			var touching = walls_h.has(Vector2(x - 1, y - 1)) or walls_h.has(Vector2(x, y - 1)) or walls_v.has(Vector2(x - 1, y - 1)) or walls_v.has(Vector2(x - 1, y))
-			if not touching and rng.randf() < 0.45:
+			if not touching and rng.randf() < pillar_ratio:
 				segs.append([Vector3(x * C, H * 0.5, y * C), Vector3(0.95, H, 0.95)])
 	for sgm in segs:
 		var pos: Vector3 = sgm[0]
@@ -280,6 +282,10 @@ func _wall_writing(lines: Array) -> void:
 # ------------------------------------------------------------------ the call
 ## The server runs the call; every machine hears it through net_event().
 func _physics_process(delta: float) -> void:
+	# Godot 3 runs every _physics_process in the class chain: sectors built on this one
+	# (no tung) skip the call entirely.
+	if tung == null or not is_instance_valid(tung):
+		return
 	# A tube somewhere stutters, then catches again (each operative sees their own).
 	if world.player and randf() < 0.02 and lights.size() > 0:
 		var l: SpotLight = lights[randi() % lights.size()]
@@ -339,6 +345,10 @@ func net_event(type: String, args: Array) -> void:
 			if hud:
 				var who = "you" if args[0] == Net.my_id() or not Net.active() else Net.pname(args[0])
 				hud.subtitle("%s shouted when he wasn't calling.   he heard." % who, 3.0)
+		"flash_woke":
+			if hud:
+				var who = "your" if args[0] == Net.my_id() or not Net.active() else Net.pname(args[0]) + "'s"
+				hud.subtitle("%s flash woke him up." % who, 3.0)
 		"unanswered":
 			if hud:
 				var quiet = "you" if args[0] == Net.my_id() or not Net.active() else Net.pname(args[0])
@@ -377,6 +387,17 @@ func _local_shout() -> void:
 		Net.request("shout")
 	else:
 		on_shout(1)
+
+
+## Server: requests from operatives. A flash in his face wakes him up.
+func on_request(pid: int, type: String, args: Array) -> void:
+	if type != "photo" or tung == null or args.empty() or str(args[0]) != "tung":
+		return
+	var t = world.target_by_id(pid)
+	if t and t.pos.distance_to(tung.global_transform.origin) < 12.0 and not tung.is_threat():
+		tung.chase_id = pid
+		tung.set_state(TungAI.S.CHASE)
+		_emit("flash_woke", [pid])
 
 
 ## Server: operative `pid` shouted.

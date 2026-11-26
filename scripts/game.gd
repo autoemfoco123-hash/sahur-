@@ -1,9 +1,10 @@
 extends Node
 ## Global game state: settings, save data, level flow, input map. (Godot 3.6 / GLES2)
 
-const LEVELS := ["0"]
+const LEVELS := ["0", "1"]
 const INFO := {
-	"0": {"title": "sector 0", "name": "the sahur hallways", "goal": "find the way out.  when he calls, answer (q)."},
+	"0": {"title": "sector 0", "name": "the sahur hallways", "goal": "photograph him (f).  answer when he calls (q).  find the way out."},
+	"1": {"title": "sector 1", "name": "the key rooms", "goal": "photograph them (f).  take the master key.  they only move when nobody is looking."},
 }
 
 var settings = {
@@ -85,6 +86,8 @@ func _boot_server(args: Array) -> void:
 	for a in args:
 		if a.begins_with("name="):
 			n = a.substr(5)
+		elif a.begins_with("level=") and INFO.has(a.substr(6)):
+			Net.level_id = a.substr(6)
 	if Net.host(n, true):
 		get_tree().change_scene("res://scenes/server.tscn")
 	else:
@@ -103,6 +106,7 @@ func _setup_inputs() -> void:
 		"interact": [KEY_E],
 		"shout": [KEY_Q],
 		"pause": [KEY_ESCAPE, KEY_P],
+		"photo": [KEY_F],
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -114,6 +118,9 @@ func _setup_inputs() -> void:
 	var lclick = InputEventMouseButton.new()
 	lclick.button_index = BUTTON_LEFT
 	InputMap.action_add_event("interact", lclick)
+	var rclick = InputEventMouseButton.new()
+	rclick.button_index = BUTTON_RIGHT
+	InputMap.action_add_event("photo", rclick)
 
 
 # ------------------------------------------------------------------ settings

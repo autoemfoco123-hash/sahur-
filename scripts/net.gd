@@ -31,6 +31,7 @@ var dedicated = false
 var server_name = "sahur"
 var players = {}                  # id -> {name, color, ready, alive, escaped, in_game}
 var round_seed = 0
+var level_id = "0"                # sector for the next round (the host picks; escapes advance it)
 var world = null                  # the running World (set by world.gd)
 var found = {}                    # LAN servers: ip -> {name, players, max, playing, t}
 var chat_log = []
@@ -103,7 +104,7 @@ func _new_player(n: String) -> Dictionary:
 	var ci = 0
 	while ci in used and ci < COLORS.size() - 1:
 		ci += 1
-	return {"name": _clean(n), "cidx": ci, "color": COLORS[ci], "ready": false, "alive": true, "escaped": false, "in_game": false}
+	return {"name": _clean(n), "cidx": ci, "color": COLORS[ci], "ready": false, "alive": true, "escaped": false, "in_game": false, "photo": 0, "photo_of": ""}
 
 
 func _clean(n: String) -> String:
@@ -253,8 +254,23 @@ func _set_ready(id: int, r: bool) -> void:
 
 func _sync() -> void:
 	if is_server():
-		rpc("_players", players, state == PLAYING)
+		rpc("_players", players, state == PLAYING, level_id)
 	emit_signal("players_changed")
+
+
+## Host: next sector in the list.
+func cycle_level() -> void:
+	if not is_server() or state != LOBBY:
+		return
+	var i = Game.LEVELS.find(level_id)
+	level_id = Game.LEVELS[(i + 1) % Game.LEVELS.size()]
+	_say("sector %s · %s" % [level_id, Game.INFO[level_id].name])
+	_sync()
+
+
+func level_name(l := "") -> String:
+	l = level_id if l == "" else l
+	return "sector %s · %s" % [l, Game.INFO.get(l, {}).get("name", "?")]
 
 
 func _say(t: String) -> void:
@@ -307,11 +323,13 @@ func _start_round() -> void:
 		players[id].escaped = false
 		players[id].in_game = true
 		players[id].ready = false
+		players[id].photo = 0
+		players[id].photo_of = ""
 	state = PLAYING
 	_end_t = -1.0
-	_log("round start · seed %d · %d operatives" % [round_seed, players.size()])
-	rpc("_round_start", round_seed, players)
-	_round_start(round_seed, players)
+	_log("round start · %s · seed %d · %d operatives" % [level_name(), round_seed, players.size()])
+	rpc("_round_start", round_seed, players, level_id)
+	_round_start(round_seed, players, level_id)
 
 
 # ------------------------------------------------------------------ lobby (client side)
@@ -328,8 +346,9 @@ remote func _welcome(sname: String, playing: bool, log_: Array) -> void:
 	emit_signal("players_changed")
 
 
-remote func _players(p: Dictionary, _playing: bool) -> void:
+remote func _players(p: Dictionary, _playing: bool, lvl := "0") -> void:
 	players = p
+	level_id = lvl
 	emit_signal("players_changed")
 
 
@@ -347,9 +366,10 @@ remote func _countdown(n: int) -> void:
 		Audio.play("ui_click", -4.0, 1.0 + (COUNTDOWN - n) * 0.06)
 
 
-remote func _round_start(seed_: int, p: Dictionary) -> void:
+remote func _round_start(seed_: int, p: Dictionary, lvl := "0") -> void:
 	players = p
 	round_seed = seed_
+	level_id = lvl
 	counting = -1
 	state = PLAYING
 	emit_signal("countdown", 0)
@@ -357,7 +377,7 @@ remote func _round_start(seed_: int, p: Dictionary) -> void:
 	if dedicated or (players.has(me) and players[me].in_game):
 		Game.forced_seed = seed_
 		Game.brain_cells = 100.0
-		Game.current_level = "0"
+		Game.current_level = lvl if Game.INFO.has(lvl) else "0"
 		get_tree().paused = false
 		get_tree().change_scene("res://scenes/world.tscn")
 
@@ -444,15 +464,25 @@ func _handle(id: int, type: String, args: Array) -> void:
 		"died":
 			if players[id].alive and not players[id].escaped:
 				event("died", [id, args[0] if args.size() > 0 else ""])
+		"photo":
+			if args.size() > 1 and int(args[1]) > int(players[id].get("photo", 0)):
+				players[id].photo = int(args[1])
+				players[id].photo_of = str(args[0])
+			if world and world.level and world.level.has_method("on_request"):
+				world.level.on_request(id, type, args)
 		"escaped":
-			if players[id].alive and not players[id].escaped:
+			var locked = world and world.level and world.level.has_method("exit_locked") and world.level.exit_locked()
+			if players[id].alive and not players[id].escaped and not locked:
 				event("escaped", [id])
+		_:
+			if world and world.level and world.level.has_method("on_request"):
+				world.level.on_request(id, type, args)
 
 
 ## Server: a brainrot reached a player.
-func catch(id: int, msg: String) -> void:
+func catch(id: int, msg: String, killer := "tung") -> void:
 	if is_server() and players.has(id) and players[id].alive and not players[id].escaped:
-		event("died", [id, msg])
+		event("died", [id, msg, killer])
 
 
 func _check_round_end() -> void:
@@ -468,10 +498,17 @@ func _check_round_end() -> void:
 
 func _end_round() -> void:
 	var res = []
+	var anyone_out = false
 	for id in round_ids():
 		var p = players[id]
-		res.append([p.name, "made it out" if p.escaped else "became rot", p.cidx])
+		res.append([p.name, "made it out" if p.escaped else "became rot", p.cidx, p.get("photo", 0), p.get("photo_of", "")])
+		anyone_out = anyone_out or p.escaped
 	_log("round over")
+	# somebody made it out: the next round goes one sector deeper
+	if anyone_out:
+		var i = Game.LEVELS.find(level_id)
+		level_id = Game.LEVELS[(i + 1) % Game.LEVELS.size()]
+	res.append(["next", level_name(), -1])
 	for id in players:
 		players[id].in_game = false
 	rpc("_round_over", res)

@@ -4,7 +4,7 @@ extends Node
 
 const VARIANTS := {
 	"tung": 3, "step_wood": 4, "step_tile": 4, "step_concrete": 4, "step_metal": 4,
-	"step_water": 4, "step_sand": 4, "step_grass": 4, "step_mud": 4,
+	"step_water": 4, "step_sand": 4, "step_grass": 4, "step_mud": 4, "key_hop": 3,
 }
 const LOOP_PREFIXES := ["amb_", "chase_"]
 const LOOPS := ["breath", "engine", "jet", "musicbox", "roll", "static", "fridge_hum", "death_drone", "nv_hum"]

@@ -115,7 +115,7 @@ func _process(_d: float) -> void:
 
 # ------------------------------------------------------------------ materials
 ## Office surface lit by this bake. kind: 0 carpet · 1 wallpaper · 2 drop ceiling · 3 light lens
-func surface(kind: int, tex: String, scale: float, wall_h: float, env: Environment) -> ShaderMaterial:
+func surface(kind: int, tex: String, scale: float, wall_h: float, env: Environment, opts := {}) -> ShaderMaterial:
 	var m = ShaderMaterial.new()
 	m.shader = load("res://scripts/world_lit.shader")
 	m.set_shader_param("kind", kind)
@@ -127,17 +127,26 @@ func surface(kind: int, tex: String, scale: float, wall_h: float, env: Environme
 	m.set_shader_param("fog_color", Vector3(env.fog_color.r, env.fog_color.g, env.fog_color.b))
 	# distance haze comes from the Environment fog (it also covers unshaded materials)
 	m.set_shader_param("fog", Plane(env.fog_depth_begin, env.fog_depth_end, env.fog_depth_curve, 0.0))
+	if opts.has("tint"):
+		m.set_shader_param("light_tint", opts.tint)
+	if opts.has("exposure"):
+		m.set_shader_param("exposure", opts.exposure)
+	if opts.has("ambient"):
+		m.set_shader_param("ambient", opts.ambient)
 	return register(m)
 
 
-## The four office materials (floor, wall, ceiling, lens) for OfficeMesh.commit().
-func office_mats(wall_h: float, env: Environment) -> Dictionary:
-	return {
-		"floor": surface(0, "carpet", 1.0, wall_h, env),
-		"wall": surface(1, "wallpaper", 1.0, wall_h, env),
-		"ceiling": surface(2, "ceiling", 1.2, wall_h, env),
-		"panel": surface(3, "panel", 0.6, wall_h, env),
-	}
+## The office materials for OfficeMesh.commit(). opts.tex overrides textures per mesh kind
+## ({"wall": ["wallpaper_green", 1.0]}); extra kinds ("door", "knob") are lit like walls.
+func office_mats(wall_h: float, env: Environment, opts := {}) -> Dictionary:
+	var tex = {"floor": ["carpet", 1.0], "wall": ["wallpaper", 1.0], "ceiling": ["ceiling", 1.2], "panel": ["panel", 0.6]}
+	var kinds = {"floor": 0, "wall": 1, "ceiling": 2, "panel": 3, "door": 1, "knob": 1}
+	for k in opts.get("tex", {}):
+		tex[k] = opts.tex[k]
+	var out = {}
+	for k in tex:
+		out[k] = surface(kinds.get(k, 1), tex[k][0], tex[k][1], wall_h, env, opts)
+	return out
 
 
 func register(m: ShaderMaterial) -> ShaderMaterial:

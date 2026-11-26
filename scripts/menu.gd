@@ -23,6 +23,7 @@ var chat_label: Label
 var chat_field: LineEdit
 var ready_btn: Button
 var start_btn: Button
+var sector_btn: Button
 var status: Label
 var count_label: Label
 var settings
@@ -172,6 +173,8 @@ func _build_ui() -> void:
 	lobby_box.add_child(lobby_title)
 	lobby_info = UI.label("", 13, UI.SOFT)
 	lobby_box.add_child(lobby_info)
+	sector_btn = UI.button("sector", Net, "cycle_level", [], 18)
+	lobby_box.add_child(sector_btn)
 	var grp = UI.group_panel()
 	grp.rect_min_size = Vector2(520, 0)
 	lobby_box.add_child(grp)
@@ -361,6 +364,8 @@ func _refresh_lobby() -> void:
 	var me = Net.players.get(Net.my_id())
 	ready_btn.text = "not ready" if me and me.ready else "i'm ready"
 	start_btn.visible = Net.is_server()
+	sector_btn.text = (Net.level_name() + ("   ‹ change ›" if Net.is_server() else "")).to_lower()
+	sector_btn.disabled = not Net.is_server()
 
 
 func _refresh_lan() -> void:

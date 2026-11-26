@@ -19,6 +19,7 @@ uniform float grain = 0.01;
 uniform float nv = 0.0;
 uniform float nv_gain = 22.0;
 uniform bool cheap = false;
+uniform float ca_amount = 1.0;      // chromatic aberration (0 = none)
 
 float rnd(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -45,7 +46,7 @@ void fragment() {
 	uv += vec2(sin(uv.y * 16.0 + t * 2.5), cos(uv.x * 12.0 + t * 2.0)) * 0.004 * madness * madness * k;
 	vec2 c = uv - 0.5;
 	float r2 = dot(c, c);
-	vec2 ca = normalize(c + 0.00001) * (0.0006 + r2 * 0.008 + danger * 0.004 + madness * 0.008 + flash * 0.02) * k;
+	vec2 ca = normalize(c + 0.00001) * (0.0006 + r2 * 0.008 + danger * 0.004 + madness * 0.008 + flash * 0.02) * k * ca_amount;
 
 	vec3 col = vec3(0.0);
 	float wsum = 0.0;

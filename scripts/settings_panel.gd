@@ -46,9 +46,9 @@ func _ready() -> void:
 		cb.connect("toggled", self, "_on_fullscreen")
 		f.add_child(cb)
 		v.add_child(f)
-		v.add_child(UI.label("wasd move · mouse look · e interact · q answer him\nctrl crouch · space jump · esc pause", 13, UI.FAINT))
+		v.add_child(UI.label("wasd move · mouse look · e interact · q answer him\nf / right click photo · ctrl crouch · space jump · esc pause", 13, UI.FAINT))
 	else:
-		v.add_child(UI.label("left thumb walks · drag on the right to look\nquick tap answers him · e / crouch / pause buttons", 13, UI.FAINT))
+		v.add_child(UI.label("left thumb walks · drag on the right to look\nquick tap answers him · photo / e / crouch / pause buttons", 13, UI.FAINT))
 	v.add_child(UI.button("‹ back", self, "_back", [], 18))
 
 

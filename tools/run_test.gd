@@ -26,6 +26,9 @@ func _initialize() -> void:
 func _idle(_d: float) -> bool:
 	n += 1
 	if n == 2:
+		for a in OS.get_cmdline_args():
+			if a.begins_with("level="):
+				root.get_node("Game").current_level = a.substr(6)
 		if "headless" in OS.get_cmdline_args():
 			root.get_node("Net").dedicated = true
 		if "fakeserver" in OS.get_cmdline_args():
@@ -66,6 +69,8 @@ func _event(act: String) -> void:
 		return
 	elif act == "kill":
 		w.kill("tung", "tung tung tung sahur found you.\nyou should have answered.")
+	elif act == "killkeys":
+		w.kill("keys", "the keys found you.\nyou looked away.")
 	elif act == "note":
 		w.show_note("test note. hush nv-7 field log.")
 	elif act == "closenote":
@@ -106,6 +111,60 @@ func _event(act: String) -> void:
 			a._target = at + Vector3(0.001, 0, 0)
 	elif act == "nohud":
 		w.hud.get_child(0).visible = false
+	elif act == "keytest":
+		# one key 6 m ahead, awake; everything else asleep far away
+		var lv = w.level
+		var pl = w.player
+		var f = -pl.cam.global_transform.basis.z
+		f.y = 0
+		f = f.normalized()
+		for i in lv.keys.size():
+			var k = lv.keys[i]
+			k.dormant = 0.0 if i == 1 else 999.0
+		var k1 = lv.keys[1]
+		# a spot on the path 5-14 m away that the player can actually see
+		var eye = pl.eye_pos()
+		var spot = null
+		for c in lv.demo_path:
+			var d = Vector2(c.x - eye.x, c.z - eye.z).length()
+			if d > 5.0 and d < 14.0 and pl.get_world().direct_space_state.intersect_ray(eye, c + Vector3(0, 1.4, 0), [pl], 1).empty():
+				spot = c
+				break
+		if spot == null:
+			print("no visible spot")
+			return
+		k1.global_transform.origin = spot + Vector3(0, 0.05, 0)
+		var to = spot - pl.global_transform.origin
+		pl.set_look(atan2(-to.x, -to.z), -0.05)
+		k1.look_at(pl.global_transform.origin, Vector3.UP)
+		k1.rotation.x = 0
+	elif act == "grabtest":
+		var lv = w.level
+		for k in lv.keys:
+			k.dormant = 999.0
+		var m = lv.master
+		var pl = w.player
+		var to = m.global_transform.origin - pl.global_transform.origin
+		print("before: exit_locked=%s master.taken=%s dist=%.1f" % [str(lv.exit_locked()), str(m.taken), to.length()])
+		pl.global_transform.origin = m.global_transform.origin + Vector3(1.6, 0.1, 0)
+		lv._grab()
+		print("after: exit_locked=%s master.taken=%s enraged=%s visible=%s" % [str(lv.exit_locked()), str(m.taken), str(lv.keys[1].enraged), str(m.visible)])
+	elif act == "keynear":
+		var pl = w.player
+		var k1 = w.level.keys[1]
+		var to = k1.global_transform.origin - pl.global_transform.origin
+		to.y = 0
+		k1.global_transform.origin = pl.global_transform.origin + to.normalized() * 2.6
+		pl.set_look(atan2(-to.x, -to.z), 0.12)
+	elif act == "photo":
+		w.photo.take()
+	elif act == "photoinfo":
+		print("photo: score=%s name=%s grade=%s evidence=%s" % [w.hud.photo_score.text, w.hud.photo_name.text, w.hud.photo_grade.text, w.hud.evidence.text])
+	elif act == "keydist":
+		var k1 = w.level.keys[1]
+		print("key distance %.2f observed=%s" % [k1.global_transform.origin.distance_to(w.player.global_transform.origin), str(k1.observed)])
+	elif act.begins_with("turn"):
+		w.player.set_look(w.player._yaw + deg2rad(float(act.substr(4))), 0.0)
 	elif act.begins_with("yaw"):
 		w.player.set_look(deg2rad(float(act.substr(3))), 0.0)
 	elif act == "census":

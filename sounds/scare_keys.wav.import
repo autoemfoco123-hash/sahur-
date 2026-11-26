@@ -1,0 +1,23 @@
+[remap]
+
+importer="wav"
+type="AudioStreamSample"
+path="res://.import/scare_keys.wav-bcde027c2b03160cc4e4a5a0cc662370.sample"
+
+[deps]
+
+source_file="res://sounds/scare_keys.wav"
+dest_files=[ "res://.import/scare_keys.wav-bcde027c2b03160cc4e4a5a0cc662370.sample" ]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=0

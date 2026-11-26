@@ -19,6 +19,7 @@ var env: Environment
 var post: ShaderMaterial
 var uncanny
 var bake      # light_bake.gd of the current level (baked office lighting), or null
+var photo     # photo.gd: the hush field camera
 var avatars = {}          # peer id -> avatar (the other operatives)
 var enemies = []          # brainrots in spawn order (same index on every peer)
 var headless = false      # dedicated server: no player, no HUD
@@ -44,6 +45,9 @@ var _scare_t = 0.0
 var _scare_m: Spatial
 var _scare_mouth: MeshInstance
 var _scare_base = Vector3.ZERO
+var _mouth_closed = Vector3.ONE
+var _mouth_open = Vector3.ONE
+var _scare_sound = "scare_scream"
 
 
 func _ready() -> void:
@@ -72,6 +76,11 @@ func _setup() -> void:
 		hud = load("res://scripts/hud.gd").new()
 		hud.world = self
 		owner.add_child(hud)
+		var cam_node = load("res://scripts/photo.gd").new()
+		cam_node.world = self
+		cam_node.name = "Camera"
+		add_child(cam_node)
+		photo = cam_node
 		if TouchControls.wanted():
 			var tc = TouchControls.new()
 			tc.world = self
@@ -110,7 +119,7 @@ func _setup() -> void:
 func _show_goal(goal: String) -> void:
 	if not dying and hud:
 		if TouchControls.wanted():
-			goal = goal.replace("(q)", "(tap)")
+			goal = goal.replace("(q)", "(tap)").replace("(f)", "(camera)")
 		var n = Net.round_ids().size()
 		hud.objective(goal if n <= 1 else "%d operatives inside.  %s" % [n, goal])
 
@@ -244,7 +253,7 @@ func targets() -> Array:
 	var out = []
 	if not Net.active():
 		if player and not dying and not completing:
-			out.append({"id": 1, "pos": player.global_transform.origin, "eye": player.eye_pos()})
+			out.append({"id": 1, "pos": player.global_transform.origin, "eye": player.eye_pos(), "fwd": -player.cam.global_transform.basis.z})
 		return out
 	var me = Net.my_id()
 	for pid in Net.round_ids():
@@ -253,10 +262,11 @@ func targets() -> Array:
 			continue
 		if player and pid == me:
 			if not my_out and not dying and not completing:
-				out.append({"id": pid, "pos": player.global_transform.origin, "eye": player.eye_pos()})
+				out.append({"id": pid, "pos": player.global_transform.origin, "eye": player.eye_pos(), "fwd": -player.cam.global_transform.basis.z})
 		elif avatars.has(pid):
 			var a = avatars[pid]
-			out.append({"id": pid, "pos": a.global_transform.origin, "eye": a.eye_pos()})
+			var fwd = Basis(Vector3.UP, a.yaw).xform(Basis(Vector3.RIGHT, a.pitch).xform(Vector3.FORWARD))
+			out.append({"id": pid, "pos": a.global_transform.origin, "eye": a.eye_pos(), "fwd": fwd})
 	return out
 
 
@@ -270,7 +280,7 @@ func target_by_id(pid: int):
 ## A brainrot reached an operative (server, or offline).
 func catch_target(pid: int, killer: String, msg: String) -> void:
 	if Net.active():
-		Net.catch(pid, msg)
+		Net.catch(pid, msg, killer)
 	elif pid == 1:
 		kill(killer, msg)
 
@@ -318,7 +328,7 @@ func net_event(type: String, args: Array) -> void:
 			var msg: String = args[1] if args.size() > 1 and args[1] != "" else "tung tung tung sahur found you.\nyou should have answered."
 			if pid == me and player:
 				if not dying:
-					kill("tung", msg)
+					kill(args[2] if args.size() > 2 else level.killer_id(), msg)
 			elif hud:
 				hud.subtitle("%s became rot." % Net.pname(pid), 3.5)
 				if not dying:
@@ -347,7 +357,12 @@ func net_round_over(res: Array) -> void:
 	if hud:
 		var lines = PoolStringArray()
 		for r in res:
-			lines.append("%s · %s" % [r[0], r[1]])
+			if r[0] == "next":
+				lines.append("\nnext: %s" % r[1])
+			elif r.size() > 4 and r[3] > 0:
+				lines.append("%s · %s · best photo %d (%s)" % [r[0], r[1], r[3], r[4]])
+			else:
+				lines.append("%s · %s · no photo" % [r[0], r[1]])
 		hud.show_stats(false)
 		hud.set_spectate("")
 		hud.death("round over", lines.join("\n") + "\n\n\nback to the lobby…")
@@ -473,6 +488,10 @@ func flash(x := 1.0) -> void:
 
 func _on_exit_body(body) -> void:
 	if body == player and player and not my_out and not dying and not completing:
+		if level.has_method("exit_locked") and level.exit_locked():
+			hud.subtitle("locked.   find the master key.", 2.5)
+			Audio.play("knock", -10.0, 1.6)
+			return
 		if Net.active():
 			Net.request("escaped")
 		else:
@@ -493,8 +512,8 @@ func close_note() -> void:
 
 
 # ------------------------------------------------------------------ death (the jumpscare)
-## A third of a second of nothing at all, then his face is on you, screaming as loud as
-## digital audio goes. Then a hard cut to black and silence.
+## The instant you are caught his face is on you, screaming as loud as digital audio goes.
+## Then a hard cut to black and silence.
 func kill(_id: String, msg: String) -> void:
 	if dying or completing or my_out or player == null:
 		return
@@ -507,34 +526,48 @@ func kill(_id: String, msg: String) -> void:
 	hud.set_prompt("")
 	hud.island.modulate.a = 0.0
 	hud._island_t = 0.0
-	Audio.silence_all(true)
-	hud.fade_rect.color = Color(0, 0, 0, 1)
 	for e in get_tree().get_nodes_in_group("hostile"):
 		e.visible = false
 	_rig = Spatial.new()
 	player.cam.add_child(_rig)
-	var m = TungModel.build()
-	_rig.add_child(m)
-	m.rotation.y = PI
-	# aim between the eyes and the mouth so the whole screaming face fills the view
-	_scare_base = Vector3(0, -0.02, -0.52) - Vector3(0, 2.13, 0.4)
+	var m: Spatial
+	_scare_sound = "scare_keys" if _id == "keys" else "scare_scream"
+	if _id == "keys":
+		m = load("res://scripts/keys_model.gd").build()
+		_rig.add_child(m)
+		m.rotation.y = PI
+		# the face from the photo fills the view
+		var KM = load("res://scripts/keys_model.gd")
+		var fp = KM._uv_pos((KM.MOUTH + KM.EYES) * 0.5)
+		_scare_base = Vector3(0, -0.02, -0.55) - Vector3(-fp.x, KM.BOW_Y, -fp.z)
+		# the face exactly as in the photo: no mouth, no colour fringing
+		_scare_mouth = null
+		post.set_shader_param("ca_amount", 0.0)
+	else:
+		m = TungModel.build()
+		_rig.add_child(m)
+		m.rotation.y = PI
+		# aim between the eyes and the mouth so the whole screaming face fills the view
+		_scare_base = Vector3(0, -0.02, -0.52) - Vector3(0, 2.13, 0.4)
+		# wide awake: no lids, bulging eyes, and a mouth tearing open
+		for n in ["lidL", "lidR"]:
+			var lid = m.find_node(n, true, false)
+			if lid:
+				lid.visible = false
+		for n in ["eyeL", "eyeR"]:
+			var eye = m.find_node(n, true, false)
+			if eye:
+				eye.scale = Vector3.ONE * 1.3
+		var body = m.find_node("body", true, false)
+		_scare_mouth = MeshInstance.new()
+		_scare_mouth.mesh = Models.sphere(1.0, -1, 24, 12)
+		_scare_mouth.material_override = Mats.unshaded(Color(0.035, 0.0, 0.0))
+		body.add_child(_scare_mouth)
+		_scare_mouth.translation = Vector3(0, TungModel.EY - 0.25, -TungModel.R + 0.012)
+		_mouth_closed = Vector3(0.13, 0.001, 0.05)
+		_mouth_open = Vector3(0.12, 0.1, 0.05)
+		_scare_mouth.scale = _mouth_closed
 	m.translation = _scare_base - Vector3(0, 0, 0.45)
-	# wide awake: no lids, bulging eyes, and a mouth tearing open
-	for n in ["lidL", "lidR"]:
-		var lid = m.find_node(n, true, false)
-		if lid:
-			lid.visible = false
-	for n in ["eyeL", "eyeR"]:
-		var eye = m.find_node(n, true, false)
-		if eye:
-			eye.scale = Vector3.ONE * 1.3
-	var body = m.find_node("body", true, false)
-	_scare_mouth = MeshInstance.new()
-	_scare_mouth.mesh = Models.sphere(1.0, -1, 24, 12)
-	_scare_mouth.material_override = Mats.unshaded(Color(0.035, 0.0, 0.0))
-	body.add_child(_scare_mouth)
-	_scare_mouth.translation = Vector3(0, TungModel.EY - 0.25, -TungModel.R + 0.012)
-	_scare_mouth.scale = Vector3(0.13, 0.001, 0.05)
 	var l = SpotLight.new()
 	l.light_color = Color(1, 0.97, 0.9)
 	l.light_energy = 9.0
@@ -550,12 +583,9 @@ func kill(_id: String, msg: String) -> void:
 	_rig.add_child(under)
 	under.translation = Vector3(0, -0.35, -0.15)
 	_scare_m = m
-	m.visible = false
-	_scare = 1
-	_scare_t = 0.0
+	# no warning, no pause: the instant he has you, he is in your face, screaming
+	_scare_hit()
 	var tw = create_tween()
-	tw.tween_interval(0.32)
-	tw.tween_callback(self, "_scare_hit")
 	tw.tween_interval(1.95)
 	tw.tween_callback(self, "_scare_cut")
 	tw.tween_interval(0.8)
@@ -575,7 +605,7 @@ func _scare_hit() -> void:
 	hud.fade_rect.color = Color(0, 0, 0, 0)
 	if is_instance_valid(_scare_m):
 		_scare_m.visible = true
-	Audio.scare("scare_scream", 0.0)
+	Audio.scare(_scare_sound, 0.0)
 	flash(1.0)
 	player.add_trauma(1.0)
 	if OS.has_feature("mobile"):
@@ -603,11 +633,14 @@ func _scare_frame(delta: float) -> void:
 	_scare_m.translation = p
 	_scare_m.rotation = Vector3(rand_range(-0.07, 0.07), PI + rand_range(-0.06, 0.06), rand_range(-0.16, 0.16))
 	var open = clamp(_scare_t / 0.09, 0.0, 1.0)
-	_scare_mouth.scale = Vector3(0.12 + 0.025 * sin(_scare_t * 41.0), 0.001 + (0.1 + 0.02 * sin(_scare_t * 57.0)) * open, 0.05)
+	if is_instance_valid(_scare_mouth):
+		var o = _mouth_closed.linear_interpolate(_mouth_open, open)
+		_scare_mouth.scale = Vector3(o.x * (1.0 + 0.2 * sin(_scare_t * 41.0)), o.y * (1.0 + 0.2 * sin(_scare_t * 57.0)), o.z)
 	player.add_trauma(delta * 6.0)
 	post.set_shader_param("madness", 1.0)
 	post.set_shader_param("danger", 1.0)
-	post.set_shader_param("flash", 0.6 if fmod(_scare_t, 0.09) < 0.035 else 0.0)
+	# a few hard flashes (~3 per second, under the photosensitive danger band), not a flicker
+	post.set_shader_param("flash", 0.6 if fmod(_scare_t, 0.33) < 0.05 else 0.0)
 
 
 func _death_screen(msg: String) -> void:
@@ -634,6 +667,7 @@ func _begin_spectate() -> void:
 	Audio.set_silence(false)
 	hud.death_root.visible = false
 	hud.fade(0.0, 0.8)
+	post.set_shader_param("ca_amount", 1.0)
 	hud.show_stats(false)
 	for e in get_tree().get_nodes_in_group("hostile"):
 		e.visible = true

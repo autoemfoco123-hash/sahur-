@@ -44,6 +44,7 @@ func _ready() -> void:
 	bc.connect("pressed", self, "_on_crouch")
 	var bp = _add_button("ii", "", 26.0, Color(1, 1, 1, 0.22), Color(1, 1, 1, 0.9))
 	bp.connect("pressed", self, "_on_pause")
+	_add_button("photo", "photo", 40.0, Color(1.0, 0.78, 0.25, 0.75), Color(0.1, 0.08, 0.02))
 	get_viewport().connect("size_changed", self, "_relayout")
 	_relayout()
 
@@ -63,7 +64,7 @@ func _on_pause() -> void:
 
 func _relayout() -> void:
 	var vp = get_viewport().get_visible_rect().size
-	var spots = [Vector2(vp.x - 130, vp.y - 110), Vector2(vp.x - 115, vp.y - 285), Vector2(vp.x - 90, 150)]
+	var spots = [Vector2(vp.x - 130, vp.y - 110), Vector2(vp.x - 115, vp.y - 285), Vector2(vp.x - 90, 150), Vector2(vp.x - 260, vp.y - 150)]
 	for i in _buttons.size():
 		var b = _buttons[i]
 		var r: float = b.get_meta("r")
