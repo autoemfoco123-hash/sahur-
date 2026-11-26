@@ -23,6 +23,10 @@ var walls_h = {}
 var walls_v = {}
 var _wall_list = []
 var bake
+var writings = []         # the handwritten lines on the walls
+var ink_light = {}        # the wall lighting opts (light_tint, exposure, ambient) the ink must match
+var _ink_jobs = []
+var _ink_queued = false
 var tapes = []            # where the lost hush tapes lie (the same on every machine)
 var _tape_nodes = {}
 var _tape_taken = {}
@@ -40,6 +44,7 @@ func build() -> void:
 	})
 	boot_goggles = true
 	greeter = "tung"
+	chalk = Color(0.15, 0.14, 0.11, 0.95)   # dark marker reads on the pale yellow walls
 	var size = Vector2(CW * C, CH * C)
 	var om = _shell(size)
 	var start = _start_cell()
@@ -411,27 +416,163 @@ func _door_wall(x: float, d: float, dz: float) -> Array:
 	]
 
 
+## Writing on the walls (only the goggles see it), by hand: each line on one cell's stretch of
+## wall, between two corners, wrapped / shrunk until it fits with a margin, every line a little
+## crooked and off, like someone wrote it in a hurry.
 func _wall_writing(lines: Array) -> void:
 	var picks = _wall_list.duplicate()
 	picks.shuffle()
 	var placed = 0
+	var font = _hand_font()
 	for sgm in picks:
 		if placed >= lines.size():
 			break
 		var pos: Vector3 = sgm[0]
 		var sz: Vector3 = sgm[1]
-		if sz.x < 1.5 and sz.z < 1.5:
+		var along_x = sz.x > sz.z
+		var length = sz.x if along_x else sz.z
+		if length < C:
+			continue          # pillars and short stubs
+		# the stretches of this wall that lie between two grid corners (cell centres)
+		var a0 = (pos.x if along_x else pos.z) - length * 0.5
+		var a1 = a0 + length
+		var base = origin.x if along_x else origin.z
+		var spots = []
+		for k in (CW if along_x else CH):
+			var c = base + (k + 0.5) * C
+			if c - C * 0.5 >= a0 - 0.01 and c + C * 0.5 <= a1 + 0.01:
+				spots.append(c)
+		if spots.empty():
 			continue
-		var normal = Vector3(0, 0, 1) if sz.x > sz.z else Vector3(1, 0, 0)
+		var c_al: float = spots[rng.randi() % spots.size()]
+		var normal = Vector3(0, 0, 1) if along_x else Vector3(1, 0, 0)
 		if rng.randf() < 0.5:
 			normal = -normal
-		var at = pos + normal * (min(sz.x, sz.z) * 0.5 + 0.02)
-		at.y = 1.55
+		var at = Vector3(c_al, 1.6, pos.z) if along_x else Vector3(pos.x, 1.6, c_al)
+		at += normal * (min(sz.x, sz.z) * 0.5 + 0.012)
 		var rel = at - origin
 		if rel.x < 0.5 or rel.z < 0.5 or rel.x > CW * C - 0.5 or rel.z > CH * C - 0.5:
 			continue
-		ir_mark(at, atan2(normal.x, normal.z), lines[placed], 64)
+		var taken = false
+		for b in wall_blockers:
+			if Vector2(b.x - at.x, b.z - at.z).length() < (C - T) * 0.5 + 0.7:
+				taken = true
+		if taken:
+			continue
+		var fit = _fit_text(str(lines[placed]).to_lower(), font, C - T - 0.9, 0.0064 * rng.randf_range(0.9, 1.08))
+		_scrawl(at, atan2(normal.x, normal.z), fit[0].split("\n"), fit[1], font)
 		placed += 1
+
+
+## Real handwriting (Nothing You Could Do, OFL), the stroke thickened a touch like a felt-tip pen.
+func _hand_font() -> DynamicFont:
+	if Game.cache.has("font_hand_wall"):
+		return Game.cache["font_hand_wall"]
+	var f: DynamicFont = UI.font("hand", 64).duplicate()
+	f.outline_size = 1
+	f.outline_color = Color(1, 1, 1)
+	Game.cache["font_hand_wall"] = f
+	return f
+
+
+## One handwritten line at a time: crooked, shifted, the second line never quite under the first.
+func _scrawl(at: Vector3, rot_y: float, text_lines: Array, ps: float, font: DynamicFont) -> void:
+	var lh = font.get_height() * ps * 0.82
+	var n = text_lines.size()
+	var right = Vector3(cos(rot_y), 0, -sin(rot_y))
+	var tilt = rng.randf_range(-0.06, 0.06)
+	for i in n:
+		var p = at + Vector3(0, (n - 1) * lh * 0.5 - i * lh, 0) + right * rng.randf_range(-0.09, 0.09)
+		_ink_line(p, rot_y, tilt + rng.randf_range(-0.035, 0.035), text_lines[i], ps * rng.randf_range(0.95, 1.05), font)
+	if not _ink_queued:
+		_ink_queued = true
+		call_deferred("_ink_bake")
+
+
+## A line of ink on the wall: rendered once into a texture, then lit by the wall's own baked
+## light (wall_ink.shader), so it is exactly as dark or as bright as the wall around it.
+func _ink_line(at: Vector3, rot_y: float, roll: float, text: String, ps: float, font: DynamicFont) -> void:
+	var ts: Vector2 = font.get_string_size(text) + Vector2(20, 16)
+	var w = 1
+	while w < ts.x:
+		w *= 2
+	var h = 1
+	while h < ts.y:
+		h *= 2
+	var vp = Viewport.new()
+	vp.size = Vector2(w, h)
+	vp.transparent_bg = true
+	vp.usage = Viewport.USAGE_2D
+	vp.disable_3d = true
+	vp.render_target_v_flip = true
+	vp.render_target_update_mode = Viewport.UPDATE_ALWAYS
+	var lb = Label.new()
+	lb.text = text
+	lb.add_font_override("font", font)
+	lb.add_color_override("font_color", Color(1, 1, 1))
+	lb.add_color_override("font_outline_modulate", Color(1, 1, 1))
+	lb.rect_position = (Vector2(w, h) - font.get_string_size(text)) * 0.5
+	vp.add_child(lb)
+	geo.add_child(vp)
+	var q = QuadMesh.new()
+	q.size = Vector2(w, h) * ps
+	var mi = MeshInstance.new()
+	mi.mesh = q
+	mi.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
+	var m = ShaderMaterial.new()
+	m.shader = preload("res://scripts/wall_ink.shader")
+	m.set_shader_param("ink", chalk)
+	m.set_shader_param("wall_h", H)
+	for k in ink_light:
+		m.set_shader_param(k, ink_light[k])
+	if bake:
+		bake.register(m)
+	mi.material_override = m
+	mi.layers = 2
+	mi.visible = false
+	geo.add_child(mi)
+	mi.global_transform.origin = at
+	mi.rotation = Vector3(0, rot_y, roll)
+	writings.append(mi)
+	_ink_jobs.append([vp, mi, m])
+
+
+## A few frames later the lines are drawn: keep them as mipmapped textures, drop the viewports.
+func _ink_bake() -> void:
+	yield(get_tree(), "idle_frame")
+	yield(get_tree(), "idle_frame")
+	yield(get_tree(), "idle_frame")
+	for j in _ink_jobs:
+		var vp: Viewport = j[0]
+		if not is_instance_valid(vp):
+			continue
+		var img = vp.get_texture().get_data()
+		var tex = ImageTexture.new()
+		tex.create_from_image(img, Texture.FLAG_FILTER | Texture.FLAG_MIPMAPS)
+		j[2].set_shader_param("text_tex", tex)
+		j[1].visible = true
+		vp.queue_free()
+	_ink_jobs.clear()
+
+
+## Wrap words into lines no wider than max_w metres; shrink if one word alone is too wide.
+func _fit_text(text: String, font: Font, max_w: float, ps: float) -> Array:
+	var out = []
+	var cur = ""
+	for w in text.split(" "):
+		var t = w if cur == "" else cur + " " + w
+		if cur != "" and font.get_string_size(t).x * ps > max_w:
+			out.append(cur)
+			cur = w
+		else:
+			cur = t
+	out.append(cur)
+	var widest = 0.0
+	for l in out:
+		widest = max(widest, font.get_string_size(l).x * ps)
+	if widest > max_w:
+		ps *= max_w / widest
+	return [PoolStringArray(out).join("\n"), ps]
 
 
 # ------------------------------------------------------------------ the call

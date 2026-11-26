@@ -141,6 +141,19 @@ func _event(act: String) -> void:
 		var lv = w.levels[w.my_sector]
 		for m in lv.missions:
 			lv.mission_set(m.id, m.goal, 1)
+	elif act.begins_with("writing"):
+		# stand 2.6 m in front of wall writing i of the sector you are in, facing it
+		var lv = w.levels[w.my_sector]
+		var i = int(act.substr(7))
+		var l: Spatial = lv.writings[i]
+		var n: Vector3 = l.global_transform.basis.z
+		n.y = 0
+		n = n.normalized()
+		var at = l.global_transform.origin + n * 2.6
+		at.y = 0.1
+		w.player.global_transform.origin = at
+		w.player.set_look(atan2(n.x, n.z), 0.0)
+		print("writing %d visible=%s" % [i, str(l.visible)])
 	elif act == "grabmaster":
 		var lv = w.levels[1]
 		w.player.global_transform.origin = lv.master.global_transform.origin + Vector3(1.4, 0.1, 0)

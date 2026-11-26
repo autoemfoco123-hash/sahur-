@@ -33,6 +33,8 @@ var has_entry = false       # a door from the previous sector in the west wall..
 var entry_z = 0.0           # ...at this world z
 var exit_z = 0.0            # world z of the exit door in the east wall
 var geo: Spatial            # this sector's static meshes
+var chalk = Color(0.9, 1.0, 0.9)   # colour of the hush marks on walls and floors
+var wall_blockers = []      # spots on walls taken by something (hotel doors): no writing there
 var missions = []           # [{id, text, goal, progress, done, fmt}] (team missions; the door opens when all are done)
 
 
@@ -138,7 +140,7 @@ func scatter_points(count: int, avoid: Vector3, min_dist := 8.0, y := 0.0) -> Ar
 
 ## hush chalk: only visible through the goggles (render layer 2).
 func ir_mark(pos: Vector3, rot_y: float, text: String, size := 90) -> Label3D:
-	var l = Geo.label3d(world, text, pos, size, Color(0.9, 1.0, 0.9), rot_y)
+	var l = Geo.label3d(world, text, pos, size, chalk, rot_y)
 	l.layers = 2
 	return l
 

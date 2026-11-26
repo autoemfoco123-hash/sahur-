@@ -13,6 +13,7 @@ const FONT_FILES := {
 	"medium": "res://fonts/Inter-Medium.ttf",
 	"thin": "res://fonts/InterDisplay-Thin.ttf",
 	"xlight": "res://fonts/InterDisplay-ExtraLight.ttf",
+	"hand": "res://fonts/NothingYouCouldDo.ttf",   # handwriting on the walls · Kimberly Geswein, OFL
 }
 
 

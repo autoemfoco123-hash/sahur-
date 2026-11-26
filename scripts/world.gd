@@ -1019,15 +1019,10 @@ func kill(_id: String, msg: String) -> void:
 			var eye = m.find_node(n, true, false)
 			if eye:
 				eye.scale = Vector3.ONE * 1.3
+		# the carved smile tears open (scare_mouth.gd), right along the carving
 		var body = m.find_node("body", true, false)
-		_scare_mouth = MeshInstance.new()
-		_scare_mouth.mesh = Models.sphere(1.0, -1, 24, 12)
-		_scare_mouth.material_override = Mats.unshaded(Color(0.035, 0.0, 0.0))
+		_scare_mouth = load("res://scripts/scare_mouth.gd").new()
 		body.add_child(_scare_mouth)
-		_scare_mouth.translation = Vector3(0, TungModel.EY - 0.25, -TungModel.R + 0.012)
-		_mouth_closed = Vector3(0.13, 0.001, 0.05)
-		_mouth_open = Vector3(0.12, 0.1, 0.05)
-		_scare_mouth.scale = _mouth_closed
 	m.translation = _scare_base - Vector3(0, 0, 0.45)
 	var l = SpotLight.new()
 	l.light_color = Color(1, 0.97, 0.9)
@@ -1095,8 +1090,8 @@ func _scare_frame(delta: float) -> void:
 	_scare_m.rotation = Vector3(rand_range(-0.07, 0.07), PI + rand_range(-0.06, 0.06), rand_range(-0.16, 0.16))
 	var open = clamp(_scare_t / 0.09, 0.0, 1.0)
 	if is_instance_valid(_scare_mouth):
-		var o = _mouth_closed.linear_interpolate(_mouth_open, open)
-		_scare_mouth.scale = Vector3(o.x * (1.0 + 0.2 * sin(_scare_t * 41.0)), o.y * (1.0 + 0.2 * sin(_scare_t * 57.0)), o.z)
+		open = 1.0 - (1.0 - open) * (1.0 - open)
+		_scare_mouth.set_open(open * (0.9 + 0.1 * sin(_scare_t * 41.0)), sin(_scare_t * 57.0))
 	player.add_trauma(delta * 6.0)
 	post.set_shader_param("madness", 1.0)
 	post.set_shader_param("danger", 1.0)

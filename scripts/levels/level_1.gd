@@ -21,6 +21,7 @@ func build() -> void:
 	})
 	boot_goggles = true
 	greeter = "keys"
+	chalk = Color(0.8, 0.8, 0.76, 0.85)     # chalk; the wall light under it decides how bright it reads
 	open_ratio = 0.22
 	pillar_ratio = 0.0
 	var size = Vector2(CW * C, CH * C)
@@ -79,6 +80,7 @@ func build() -> void:
 	if has_entry:
 		lxz.append(Vector2(origin.x + 1.0, entry_z))         # and one by the door you came in through
 	bake.build(Rect2(o2() + Vector2(-1.6, -1.6), size + Vector2(3.2, 3.2)), lxz, walls2d, 0.85)
+	ink_light = {"light_tint": Vector3(1.0, 0.8, 0.58), "exposure": 0.95, "ambient": 0.035}
 	om.commit(geo, bake.office_mats(H, world.env, {
 		"tex": {"floor": ["carpet_red", 1.0], "wall": ["wallpaper_green", 1.0], "ceiling": ["plaster", 2.0],
 			"panel": ["lamp_round", 0.6], "door": ["wood", 1.0], "knob": ["brass", 0.3]},
@@ -186,6 +188,7 @@ func _place_doors(om) -> void:
 
 ## One locked hotel door on a wall face: slab, frame, brass knob, room plate.
 func _hotel_door(om, face: Vector3, n: Vector3, t: Vector3, w: float) -> void:
+	wall_blockers.append(face)
 	om.box_sides("door", face + n * 0.025 + Vector3(0, 1.04, 0), _sz(t, n, w, 2.08, 0.05))
 	for s2 in [-1.0, 1.0]:
 		om.box_sides("door", face + n * 0.035 + t * (w * 0.5 + 0.035) * s2 + Vector3(0, 1.08, 0), _sz(t, n, 0.07, 2.16, 0.07))
