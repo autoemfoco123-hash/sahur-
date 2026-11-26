@@ -48,8 +48,7 @@ func _exit_tree() -> void:
 	if _behind != null and is_instance_valid(_behind):
 		_behind.queue_free()
 		_behind = null
-		if world == null or not world._transit:
-			Audio.set_silence(false)
+		Audio.set_silence(false)
 
 
 func add_tposers(n: int) -> void:

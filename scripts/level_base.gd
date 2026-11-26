@@ -1,10 +1,15 @@
 class_name LevelBase
 extends Node
 ## Base for every sector. Override build() and _physics_process for sector logic. (Godot 3)
-## One round is one run through every sector: they all live in the same world, side by side,
-## SECTOR_GAP metres apart along x (far past the camera's far plane, so only one is ever drawn).
-## The exit door of a sector opens straight into the next one.
-## Build everything relative to `origin` (use _cell / o2() / make_nav, which already add it).
+## One round is one run through every sector, and they are built wall to wall along x: the
+## east wall of a sector touches the west wall of the next, and a sliding door (slide_door.gd)
+## goes through both. Open it and the next sector is simply there.
+## Build everything relative to `origin` (use _cell / o2() / make_nav, which already add it),
+## cut the doorways at entry_z (west wall, if has_entry) and exit_z (east wall), report extent,
+## and put the static meshes under `geo` (world.gd hides a sector nobody can see into).
+
+const DOOR_W = 1.3
+const DOOR_H = 2.2
 
 var world
 var rng: RandomNumberGenerator
@@ -22,7 +27,11 @@ var spawn_yaw = 0.0
 var arrive_pos = Vector3.INF   # where you stand after coming through the previous sector's door
 var arrive_yaw = 0.0
 var wave_started = false
-var exit_root: Spatial      # this sector's exit door
+var extent = Vector2.ZERO   # size on x/z (world.gd puts the next sector right after it)
+var has_entry = false       # a door from the previous sector in the west wall...
+var entry_z = 0.0           # ...at this world z
+var exit_z = 0.0            # world z of the exit door in the east wall
+var geo: Spatial            # this sector's static meshes
 
 
 func build() -> void:
@@ -131,49 +140,3 @@ func ir_mark(pos: Vector3, rot_y: float, text: String, size := 90) -> Label3D:
 	l.layers = 2
 	return l
 
-
-# ------------------------------------------------------------------ the exit door
-## A real door, shut, with the next sector's light leaking around it. [E] opens it
-## (world.use_exit decides: locked, the next sector, or the way out).
-func make_exit(pos: Vector3, rot_y: float, color: Color) -> Spatial:
-	var root = Spatial.new()
-	root.name = "ExitDoor"
-	world.add_child(root)
-	exit_root = root
-	root.translation = pos
-	root.rotation.y = rot_y
-	# solid: you open it, you don't walk through it
-	var sb = StaticBody.new()
-	sb.collision_layer = Geo.LAYER_WORLD
-	root.add_child(sb)
-	var cs = CollisionShape.new()
-	var sh = BoxShape.new()
-	sh.extents = Vector3(0.75, 1.2, 0.08)
-	cs.shape = sh
-	sb.add_child(cs)
-	cs.translation = Vector3(0, 1.2, 0)
-	if world.headless:
-		return root
-	var frame = Mats.std(Color(0.07, 0.07, 0.07), 0.6)
-	Models.part(root, Models.box(Vector3(0.15, 2.4, 0.2)), frame, Vector3(-0.68, 1.2, 0))
-	Models.part(root, Models.box(Vector3(0.15, 2.4, 0.2)), frame, Vector3(0.68, 1.2, 0))
-	Models.part(root, Models.box(Vector3(1.5, 0.15, 0.2)), frame, Vector3(0, 2.4, 0))
-	# the light on the other side: a thin bright line all around the door, brightest at the floor
-	var g = Models.part(root, Models.box(Vector3(1.2, 2.32, 0.03)), Mats.glow(color, 4.0), Vector3(0, 1.16, -0.03))
-	g.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
-	g.name = "glow"
-	var hinge = Spatial.new()
-	hinge.name = "hinge"
-	root.add_child(hinge)
-	hinge.translation = Vector3(-0.585, 0, 0.03)
-	var slab_mat = Mats.std(Color(0.15, 0.14, 0.12), 0.55)
-	Models.part(hinge, Models.box(Vector3(1.11, 2.2, 0.05)), slab_mat, Vector3(0.555, 1.15, 0))
-	Models.part(hinge, Models.box(Vector3(0.05, 0.05, 0.08)), Mats.std(Color(0.45, 0.42, 0.36), 0.3, 0.8), Vector3(1.0, 1.02, 0.05))
-	Models.part(hinge, Models.box(Vector3(0.16, 0.035, 0.05)), Mats.std(Color(0.45, 0.42, 0.36), 0.3, 0.8), Vector3(0.94, 1.02, 0.09))
-	var spill = Geo.omni(root, Vector3(0, 0.12, 0.45), color, 0.9, 2.2)
-	spill.light_cull_mask = Geo.VIS_ACTOR
-	Geo.label3d(root, "exit", Vector3(0, 2.75, 0.12), 48, Color(1, 0.2, 0.15), 0.0)
-	Models.set_layers(root, 1 | Geo.VIS_ACTOR)
-	if world.player:
-		Interactable.make(root, root.global_transform.xform(Vector3(0, 1.2, 0.35)), 0.7, "open the door", world, "use_exit", [self, root], false)
-	return root

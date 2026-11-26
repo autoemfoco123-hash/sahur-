@@ -22,28 +22,17 @@ func build() -> void:
 	open_ratio = 0.22
 	pillar_ratio = 0.0
 	var size = Vector2(CW * C, CH * C)
-	make_nav(Vector2(-1, -1), size + Vector2(1, 1), 0.5)
-	nav.margin = 0.3
-	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), origin + Vector3(size.x * 0.5, -0.2, size.y * 0.5), null, null, false)
-	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), origin + Vector3(size.x * 0.5, H + 0.2, size.y * 0.5), null, null, false)
-	var om = OfficeMesh.new()
-	om.plane("floor", o2() + Vector2(-0.2, -0.2), o2() + size + Vector2(0.4, 0.4), 0.0, true)
-	om.plane("ceiling", o2() + Vector2(-0.2, -0.2), o2() + size + Vector2(0.4, 0.4), H, false)
-	_layout()
-	_build_walls(om)
-	var start = Vector2(0, 0)
+	var om = _shell(size)
+	var start = _start_cell()
 	var info = _bfs(start)
 	var dist: Dictionary = info.dist
 	var par: Dictionary = info.parent
-	var far = start
-	for c in dist:
-		if dist[c] > dist[far]:
-			far = c
+	var far = _exit_cell(dist)
+	exit_z = _cell(far).z
+	_build_walls(om)
 	var sp = _cell(start)
-	spawn_player(sp + Vector3(0, 0.2, 0), -PI * 0.75)
-	# through the door from the sector before: your back to a hotel door, facing the floor
-	arrive_pos = origin + Vector3(C * 0.5, 0.2, 0.75)
-	arrive_yaw = PI
+	spawn_player(sp + Vector3(0, 0.2, 0), -PI * 0.5 if has_entry else -PI * 0.75)
+	_arrival(start)
 	# the keys (decided before anything visual touches the rng, so every machine agrees).
 	# They sleep until the first operative comes through the door (start_wave).
 	var spots = _key_spots(dist, sp, 4)
@@ -54,11 +43,7 @@ func build() -> void:
 		keys.append(k)
 	master = keys[0]
 	master.make_master()
-	# exit (locked until someone holds the master key)
-	var back: Vector2 = par.get(far, far)
-	var dirv = Vector3(back.x - far.x, 0, back.y - far.y)
-	var exit_at = _cell(far) - dirv * 1.2
-	make_exit(exit_at, atan2(dirv.x, dirv.z), Color(0.85, 0.92, 1.0))
+	# the exit is the sliding door in the east wall, locked until someone holds the master key
 	if world.headless:
 		return
 	if player():
@@ -76,8 +61,6 @@ func build() -> void:
 			lamp_pos.append(lp)
 			om.panel(lp)
 	_place_doors(om)
-	# the door you came through: shut behind you, and it stays shut
-	_hotel_door(om, Vector3(origin.x + C * 0.5, 0.0, origin.z + T * 0.5), Vector3(0, 0, 1), Vector3(1, 0, 0), 0.92)
 	bake = LightBake.new()
 	world.add_child(bake)
 	var walls2d = []
@@ -86,10 +69,11 @@ func build() -> void:
 	var lxz = []
 	for lp in lamp_pos:
 		lxz.append(Vector2(lp.x, lp.z))
-	var eg = exit_at + dirv * 0.9
-	lxz.append(Vector2(eg.x, eg.z))
+	lxz.append(Vector2(origin.x + size.x - 1.0, exit_z))     # a lamp in front of the exit door
+	if has_entry:
+		lxz.append(Vector2(origin.x + 1.0, entry_z))         # and one by the door you came in through
 	bake.build(Rect2(o2() + Vector2(-1.6, -1.6), size + Vector2(3.2, 3.2)), lxz, walls2d, 0.85)
-	om.commit(world, bake.office_mats(H, world.env, {
+	om.commit(geo, bake.office_mats(H, world.env, {
 		"tex": {"floor": ["carpet_red", 1.0], "wall": ["wallpaper_green", 1.0], "ceiling": ["plaster", 2.0],
 			"panel": ["lamp_round", 0.6], "door": ["wood", 1.0], "knob": ["brass", 0.3]},
 		"tint": Vector3(1.0, 0.8, 0.58), "exposure": 0.95, "ambient": 0.035,
@@ -189,8 +173,8 @@ func _place_doors(om) -> void:
 			var rel = face - origin
 			if rel.x < 0.3 or rel.z < 0.3 or rel.x > CW * C - 0.3 or rel.z > CH * C - 0.3:
 				continue
-			if rel.z < 1.0 and rel.x < C:
-				continue      # the arrival door has this spot
+			if (rel.x < 1.0 and has_entry and abs(face.z - entry_z) < 1.7) or (rel.x > CW * C - 1.0 and abs(face.z - exit_z) < 1.7):
+				continue      # the sliding doors have this spot
 			_hotel_door(om, face, n, t, 0.92)
 
 

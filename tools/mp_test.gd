@@ -118,14 +118,16 @@ func _event(act: String) -> void:
 	elif act == "die":
 		Game_kill(w)
 	elif act == "door":
-		# walk up to the exit of the sector you are in and open it
-		var lv = w.levels[w.my_sector]
-		var d: Spatial = lv.exit_root
-		var front: Vector3 = d.global_transform.xform(Vector3(0, 0, 1.5))
-		w.player.global_transform.origin = front + Vector3(0, 0.1, 0)
-		var to = d.global_transform.origin - front
-		w.player.set_look(atan2(-to.x, -to.z), 0.0)
-		w.use_exit(lv, d)
+		# walk up to the sliding door of the sector you are in and press e
+		var d = w.doors[w.my_sector]
+		var o: Vector3 = d.global_transform.origin
+		w.player.global_transform.origin = o + Vector3(-d.depth * 0.5 - 1.2, 0.1, 0)
+		w.player.set_look(-PI * 0.5, 0.0)
+		w.door_use(d)
+	elif act == "cross":
+		# step through the (open) door to the other side
+		var d = w.doors[w.my_sector]
+		w.player.global_transform.origin = d.global_transform.origin + Vector3(d.depth * 0.5 + 1.0, 0.1, 0)
 	elif act == "tomaster":
 		# right next to the master key, staring at it (watched, it can't run)
 		var lv = w.levels[1]
@@ -140,7 +142,9 @@ func _event(act: String) -> void:
 		for pid in net.players:
 			var p = net.players[pid]
 			ss += "%s:s%d:%s " % [p.name, int(p.get("sector", -1)), "out" if p.escaped else ("rot" if not p.alive else "in")]
-		print("[", pname, "] where my_sector=%d view=%d pos=%s out=%s dying=%s transit=%s wave1=%s calling=%s answered=%s players=%s" % [w.my_sector, w.view_sector, str(w.player.global_transform.origin.round()), str(w.my_out), str(w.dying), str(w._transit), str(w.levels[1].wave_started), str(w.levels[0].calling), str(w.levels[0].answered), ss])
+		for k in w.doors:
+			ss += " door%d=%.2f" % [k, w.doors[k].open_amt]
+		print("[", pname, "] where my_sector=%d view=%d pos=%s out=%s dying=%s greeter=%s wave1=%s calling=%s answered=%s players=%s" % [w.my_sector, w.view_sector, str(w.player.global_transform.origin.round()), str(w.my_out), str(w.dying), str(w._greeter != null), str(w.levels[1].wave_started), str(w.levels[0].calling), str(w.levels[0].answered), ss])
 	elif act == "freeze":
 		for e in w.get_tree().get_nodes_in_group("hostile"):
 			e.frozen = true

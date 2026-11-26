@@ -36,24 +36,14 @@ func build() -> void:
 	boot_goggles = true
 	greeter = "tung"
 	var size = Vector2(CW * C, CH * C)
-	make_nav(Vector2(-1, -1), size + Vector2(1, 1), 0.5)
-	nav.margin = 0.3
-	# One collider each for floor and ceiling; what you see is the merged, light-baked office mesh.
-	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), origin + Vector3(size.x * 0.5, -0.2, size.y * 0.5), null, null, false)
-	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), origin + Vector3(size.x * 0.5, H + 0.2, size.y * 0.5), null, null, false)
-	var om = OfficeMesh.new()
-	om.plane("floor", o2() + Vector2(-0.2, -0.2), o2() + size + Vector2(0.4, 0.4), 0.0, true)
-	om.plane("ceiling", o2() + Vector2(-0.2, -0.2), o2() + size + Vector2(0.4, 0.4), H, false)
-	_layout()
-	_build_walls(om)
-	var start = Vector2(0, 0)
+	var om = _shell(size)
+	var start = _start_cell()
 	var info = _bfs(start)
 	var dist: Dictionary = info.dist
 	var par: Dictionary = info.parent
-	var far = start
-	for c in dist:
-		if dist[c] > dist[far]:
-			far = c
+	var far = _exit_cell(dist)
+	exit_z = _cell(far).z
+	_build_walls(om)
 	# Square ceiling panels, snapped to the 60 cm drop-ceiling grid
 	var cells = dist.keys()
 	cells.shuffle()
@@ -65,15 +55,11 @@ func build() -> void:
 			lp.z = floor(lp.z / 0.6) * 0.6 + 0.3
 			lamp_pos.append(lp)
 			om.panel(lp)
-	# Exit
-	var back: Vector2 = par.get(far, far)
-	var dirv = Vector3(back.x - far.x, 0, back.y - far.y)
-	var exit_at = _cell(far) - dirv * 1.2
-	# the way on: it opens straight into the key rooms
-	make_exit(exit_at, atan2(dirv.x, dirv.z), Color(1.0, 0.72, 0.42))
+	# the exit is the sliding door in the east wall (world.gd): the key rooms are behind it
 	if world.headless:
 		# dedicated server: collision, navigation and rules only, nothing to draw
 		spawn_player(_cell(start) + Vector3(0, 0.2, 0), -PI * 0.75)
+		_arrival(start)
 		tung = enemy(TungAI, "tung", _tung_spawn(dist, far, _cell(start)) + Vector3(0, 0.1, 0))
 		return
 	# Bake the light once (GPU, 2D soft shadows + bounce + occlusion), then build the meshes
@@ -85,15 +71,15 @@ func build() -> void:
 	var lxz = []
 	for lp in lamp_pos:
 		lxz.append(Vector2(lp.x, lp.z))
-	var eg = exit_at + dirv * 0.9
-	lxz.append(Vector2(eg.x, eg.z))
+	lxz.append(Vector2(origin.x + size.x - 1.0, exit_z))     # a lamp right in front of the door
 	bake.build(Rect2(o2() + Vector2(-1.6, -1.6), size + Vector2(3.2, 3.2)), lxz, walls2d)
-	om.commit(world, bake.office_mats(H, world.env))
+	om.commit(geo, bake.office_mats(H, world.env))
 	for lp in lamp_pos:
 		lights.append(Geo.lamp_light(world, lp, bake, rng.randf_range(1.5, 1.9)))
 	# Player
 	var sp = _cell(start)
 	spawn_player(sp + Vector3(0, 0.2, 0), -PI * 0.75)
+	_arrival(start)
 	note(sp + Vector3(0.7, 0.0, -0.7), "hush · descent briefing · operative 03\n\nyou are below the feed now. this is the rot.\nthe nv-7 goggles are bolted to your skull. they do not come off.\nnaked eyes don't work down here. we tried.\n\nsector 0 is held by subject 'tung'. he calls three times.\nanswer him: shout sahur (q) before the third call ends.\nstay quiet, and he comes looking for the quiet one.\n\nwe do not speak of it. we watch it.")
 	var pts = scatter_points(6, sp, 14.0, 0.0)
 	if pts.size() > 0:
@@ -135,6 +121,51 @@ func enter(boot: bool) -> void:
 func start_wave() -> void:
 	.start_wave()
 	call_timer = 14.0
+
+
+## Size, navigation, floor/ceiling colliders and the merged floor/ceiling meshes.
+## Floors stop at the outer walls' centre lines, so two sectors wall to wall never overlap.
+func _shell(size: Vector2):
+	extent = size
+	make_nav(Vector2(-1, -1), size + Vector2(1, 1), 0.5)
+	nav.margin = 0.3
+	# One collider each for floor and ceiling; what you see is the merged, light-baked office mesh.
+	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), origin + Vector3(size.x * 0.5, -0.2, size.y * 0.5), null, null, false)
+	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), origin + Vector3(size.x * 0.5, H + 0.2, size.y * 0.5), null, null, false)
+	var om = OfficeMesh.new()
+	var a = o2() - Vector2(T, T) * 0.5
+	var b = o2() + size + Vector2(T, T) * 0.5
+	om.plane("floor", a, b, 0.0, true)
+	om.plane("ceiling", a, b, H, false)
+	_layout()
+	return om
+
+
+## The run starts in the corner; later sectors start at the door you came in through.
+func _start_cell() -> Vector2:
+	if not has_entry:
+		return Vector2(0, 0)
+	return Vector2(0, clamp(floor((entry_z - origin.z) / C), 0, CH - 1))
+
+
+## The exit: the cell on the east edge that is furthest to walk to.
+func _exit_cell(dist: Dictionary) -> Vector2:
+	var best = Vector2(CW - 1, CH - 1)
+	var bd = -1
+	var cells = dist.keys()
+	cells.sort()
+	for c in cells:
+		if int(c.x) == CW - 1 and dist[c] > bd:
+			bd = dist[c]
+			best = c
+	return best
+
+
+## Where you stand after walking in through the door (and where the dead come back).
+func _arrival(start: Vector2) -> void:
+	if has_entry:
+		arrive_pos = Vector3(origin.x + 1.1, 0.2, entry_z)
+		arrive_yaw = -PI * 0.5
 
 
 ## Tung starts halfway down the maze, far from the operatives.
@@ -241,8 +272,9 @@ func _build_walls(om) -> void:
 	var d = CH * C
 	segs.append([Vector3(w * 0.5, H * 0.5, 0), Vector3(w + T, H, T)])
 	segs.append([Vector3(w * 0.5, H * 0.5, d), Vector3(w + T, H, T)])
-	segs.append([Vector3(0, H * 0.5, d * 0.5), Vector3(T, H, d + T)])
-	segs.append([Vector3(w, H * 0.5, d * 0.5), Vector3(T, H, d + T)])
+	# west and east: whole, or with a doorway for the sliding doors
+	segs += _door_wall(0.0, d, entry_z - origin.z if has_entry else -1.0)
+	segs += _door_wall(w, d, exit_z - origin.z)
 	for x in range(1, CW):
 		for y in range(1, CH):
 			var touching = walls_h.has(Vector2(x - 1, y - 1)) or walls_h.has(Vector2(x, y - 1)) or walls_v.has(Vector2(x - 1, y - 1)) or walls_v.has(Vector2(x - 1, y))
@@ -252,6 +284,7 @@ func _build_walls(om) -> void:
 		sgm[0] += origin
 		var pos: Vector3 = sgm[0]
 		var sz: Vector3 = sgm[1]
+		var listed = sgm.size() < 3      # a lintel over a door is not a wall to write on
 		var cs = CollisionShape.new()
 		var sh = BoxShape.new()
 		sh.extents = sz * 0.5
@@ -260,7 +293,29 @@ func _build_walls(om) -> void:
 		cs.translation = pos
 		nav.block_box(pos, sz)
 		om.box_sides("wall", pos, sz)
-		_wall_list.append(sgm)
+		if listed:
+			_wall_list.append(sgm)
+	# nothing walks into a doorway on its own
+	var doorways = [Vector2(origin.x + w, exit_z)]
+	if has_entry:
+		doorways.append(Vector2(origin.x, entry_z))
+	for dw in doorways:
+		nav.block_box(Vector3(dw.x, 0, dw.y), Vector3(T + 0.6, 2.0, DOOR_W + 0.3))
+
+
+## A boundary wall at x (relative) along the whole z range; with a doorway at dz if dz >= 0.
+func _door_wall(x: float, d: float, dz: float) -> Array:
+	if dz < 0.0:
+		return [[Vector3(x, H * 0.5, d * 0.5), Vector3(T, H, d + T)]]
+	var z0 = -T * 0.5
+	var z1 = d + T * 0.5
+	var a = dz - DOOR_W * 0.5
+	var b = dz + DOOR_W * 0.5
+	return [
+		[Vector3(x, H * 0.5, (z0 + a) * 0.5), Vector3(T, H, a - z0)],
+		[Vector3(x, H * 0.5, (b + z1) * 0.5), Vector3(T, H, z1 - b)],
+		[Vector3(x, (DOOR_H + H) * 0.5, dz), Vector3(T, H - DOOR_H, DOOR_W), "lintel"],
+	]
 
 
 func _wall_writing(lines: Array) -> void:

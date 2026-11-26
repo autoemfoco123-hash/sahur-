@@ -5,12 +5,13 @@ extends Spatial
 ## the HUD and post-processing live on Root at full resolution.
 ## Multiplayer: every peer builds the same office from Net.round_seed. The server runs the
 ## brainrots and the rules; clients drive puppets. A dedicated server has no player and no HUD.
-## One round is one run: every sector is built at once, SECTOR_GAP metres apart, and each exit
-## door opens straight into the next sector (a wave game). `level` is the sector the local
-## camera is in; `levels[i]` is sector i.
+## One round is one run: every sector is built at once, wall to wall along x, and each exit
+## is a sliding door that opens onto the next sector itself (a wave game). `level` is the
+## sector the local camera is in; `levels[i]` is sector i; `doors[i]` is sector i's exit.
 
 const FACE := Vector3(0, 2.2, -0.4)
-const SECTOR_GAP = 400.0
+const WALL_T = 0.28        # outer wall thickness of a sector (level_0.gd T)
+const SlideDoor = preload("res://scripts/slide_door.gd")
 const Avatar = preload("res://scripts/avatar.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 
@@ -57,11 +58,13 @@ var _mouth_closed = Vector3.ONE
 var _mouth_open = Vector3.ONE
 var _scare_sound = "scare_scream"
 var _booted = false
-var _transit = false      # walking through a door (controls off, the dark in between)
+var doors = {}            # sector -> its exit door (slide_door.gd)
 var _greeter: Spatial     # the thing waiting on the other side of the door
-var _greeter_t = 0.0
+var _greeter_door = null
 var _greeter_gone = 0.0
 var _greeter_id = ""
+var _greeted = {}
+var _fog_base = Color(0, 0, 0)
 var _pending_revive = -1
 
 
@@ -119,11 +122,20 @@ func _setup() -> void:
 	var id: String = Game.current_level
 	start_sector = int(clamp(Game.LEVELS.find(id), 0, Game.LEVELS.size() - 1))
 	var base_seed: int = Game.forced_seed if Game.forced_seed >= 0 else int(rng.randi() % 2000000000)
+	var x = 0.0
 	for i in Game.LEVELS.size():
 		var lv = load("res://scripts/levels/level_%s.gd" % Game.LEVELS[i]).new()
 		lv.world = self
 		lv.index = i
-		lv.origin = sector_origin(i)
+		# each sector's west wall stands right against the previous sector's east wall,
+		# and its entrance lines up with the previous exit
+		lv.origin = Vector3(x, 0, 0)
+		if i > 0:
+			lv.has_entry = true
+			lv.entry_z = levels[i - 1].exit_z
+		lv.geo = Spatial.new()
+		lv.geo.name = "Sector%d" % i
+		add_child(lv.geo)
 		var r = RandomNumberGenerator.new()
 		r.seed = base_seed + i * 7919
 		seed(base_seed + i * 7919)
@@ -131,6 +143,8 @@ func _setup() -> void:
 		add_child(lv)
 		levels.append(lv)
 		lv.build()
+		x = lv.origin.x + lv.extent.x + WALL_T
+	_build_doors()
 	level = levels[start_sector]
 	nav = level.nav
 	my_sector = start_sector
@@ -180,12 +194,12 @@ func _spawn_players() -> void:
 
 
 # ------------------------------------------------------------------ sectors
-func sector_origin(i: int) -> Vector3:
-	return Vector3(i * SECTOR_GAP, 0, 0)
-
-
+## Sectors are wall to wall along x: the seam between two is the middle of the double wall.
 func sector_at(p: Vector3) -> int:
-	return int(max(0.0, floor((p.x + SECTOR_GAP * 0.5) / SECTOR_GAP)))
+	for i in range(levels.size() - 1, 0, -1):
+		if p.x >= levels[i].origin.x - WALL_T * 0.5:
+			return i
+	return 0
 
 
 ## The sector an operative is in (the server's word in multiplayer).
@@ -208,10 +222,11 @@ func set_view(s: int, force := false) -> void:
 	level = levels[s]
 	nav = level.nav
 	bake = level.get("bake")
-	setup_env(level.env_cfg)
-	if has_meta("fog_base"):
-		remove_meta("fog_base")
 	_apply_quality()
+	if boot or player == null:
+		setup_env(level.env_cfg)
+	else:
+		_blend_env(level.env_cfg, 1.2)
 	if player == null:
 		return
 	level.enter(boot and level.boot_goggles)
@@ -260,6 +275,7 @@ func setup_env(c: Dictionary) -> void:
 	# Source-style depth fog (env_fog_controller): starts close, gets thick fast.
 	env.fog_enabled = c.get("fog", true)
 	env.fog_color = c.get("fog_color", Color(0.02, 0.02, 0.02))
+	_fog_base = env.fog_color
 	env.fog_depth_enabled = true
 	env.fog_depth_begin = c.get("fog_begin", 6.0)
 	env.fog_depth_end = c.get("fog_end", 50.0)
@@ -367,7 +383,7 @@ func targets(sector := -1) -> Array:
 func _targets() -> Array:
 	var out = []
 	if not Net.active():
-		if player and not dying and not completing and not _transit:
+		if player and not dying and not completing:
 			var pp = player.global_transform.origin
 			out.append({"id": 1, "pos": pp, "eye": player.eye_pos(), "fwd": -player.cam.global_transform.basis.z, "sector": sector_at(pp)})
 		return out
@@ -480,13 +496,13 @@ func net_event(type: String, args: Array) -> void:
 		"advanced":
 			var pid: int = args[0]
 			var s: int = args[1]
-			if pid != me and player and view_sector == s - 1 and not dying:
-				var door = levels[s - 1].get("exit_root")
-				if door and is_instance_valid(door):
-					_swing(door, true)
-					get_tree().create_timer(0.7).connect("timeout", self, "_slam", [door])
-				if hud:
-					hud.subtitle("%s opened the door.   it shut behind them." % Net.pname(pid), 3.5)
+			if pid != me and hud and player and view_sector == s - 1 and not dying:
+				var info: Dictionary = Game.INFO.get(Game.LEVELS[s], {})
+				hud.subtitle("%s went through to %s." % [Net.pname(pid), info.get("name", "")], 3.5)
+		"door":
+			var d = doors.get(int(args[0]))
+			if d:
+				d.open()
 		"revived":
 			var pid: int = args[0]
 			if pid == me and player:
@@ -523,21 +539,23 @@ func net_round_over(res: Array) -> void:
 func _process(delta: float) -> void:
 	if level == null or player == null:
 		return
-	if not _transit:
-		set_view(sector_at(player.cam.global_transform.origin))
+	set_view(sector_at(player.cam.global_transform.origin))
+	if not my_out and not dying and not completing:
+		var ps = sector_at(player.global_transform.origin)
+		if ps > my_sector:
+			_arrive(ps)
+	_greeter_check()
 	if _greeter != null:
 		_greeter_frame(delta)
 	_cull_t -= delta
 	if _cull_t <= 0.0:
 		_cull_t = 0.25
 		_cull_lamps()
+		_update_sector_vis()
 	if bake:
 		_feed_actor()
 		# the haze goes dark with the lights
-		var fc: Color = get_meta("fog_base") if has_meta("fog_base") else env.fog_color
-		if not has_meta("fog_base"):
-			set_meta("fog_base", fc)
-		env.fog_color = fc.linear_interpolate(Color(0.01, 0.01, 0.01), 0.9 if bake.black else 0.0)
+		env.fog_color = _fog_base.linear_interpolate(Color(0.01, 0.01, 0.01), 0.9 if bake.black else 0.0)
 	if my_out:
 		_spec_t -= delta
 		if _spec_t <= 0.0:
@@ -639,98 +657,89 @@ func flash(x := 1.0) -> void:
 
 
 # ------------------------------------------------------------------ the doors between sectors
-## [E] on an exit door: locked, the next sector, or (in the last sector) the way out.
-func use_exit(lv, door: Spatial) -> void:
-	if player == null or my_out or dying or completing or _transit:
-		return
-	if lv.has_method("exit_locked") and lv.exit_locked():
-		hud.subtitle("locked.   find the master key.", 2.5)
-		Audio.play("knock", -10.0, 1.6)
-		Audio.play("door_rattle", -4.0)
-		return
-	_transit = true
-	player.controls = false
-	hud.set_prompt("")
-	_swing(door, true)
-	Audio.play("door_open", -3.0)
-	flash(0.35)
-	if lv.index >= levels.size() - 1:
-		get_tree().create_timer(0.45).connect("timeout", self, "_leave_run")
-	else:
+## Every exit is a sliding door in the east wall: into the next sector, or (the last one) out.
+func _build_doors() -> void:
+	for i in levels.size():
+		var lv = levels[i]
+		var last = i == levels.size() - 1
+		var x = lv.origin.x + lv.extent.x + (0.0 if last else WALL_T * 0.5)
+		var d = SlideDoor.new()
+		d.setup(self, Vector3(x, lv.origin.y, lv.exit_z), i, -1 if last else i + 1, WALL_T if last else WALL_T * 2.0)
+		doors[i] = d
+		if last:
+			_build_way_out(d)
+
+
+## Behind the last door: a short concrete corridor, a green exit sign, and the way out.
+func _build_way_out(d) -> void:
+	var o: Vector3 = d.global_transform.origin
+	var x0 = o.x + d.depth * 0.5
+	var L = 3.4
+	var hw = 1.1
+	var hh = 2.5
+	var mat = null if headless else Mats.std(Color(0.2, 0.2, 0.19), 0.9)
+	var show = not headless
+	Geo.solid(self, Vector3(L + 0.2, 0.2, hw * 2.0 + 0.4), Vector3(x0 + L * 0.5, o.y - 0.1, o.z), mat, null, show)
+	Geo.solid(self, Vector3(L + 0.2, 0.2, hw * 2.0 + 0.4), Vector3(x0 + L * 0.5, o.y + hh + 0.1, o.z), mat, null, show)
+	for s in [-1.0, 1.0]:
+		Geo.solid(self, Vector3(L + 0.2, hh, 0.2), Vector3(x0 + L * 0.5, o.y + hh * 0.5, o.z + s * (hw + 0.1)), mat, null, show)
+	Geo.solid(self, Vector3(0.2, hh, hw * 2.0 + 0.4), Vector3(x0 + L + 0.1, o.y + hh * 0.5, o.z), mat, null, show)
+	var a = Area.new()
+	a.collision_layer = 0
+	a.collision_mask = Geo.LAYER_PLAYER
+	add_child(a)
+	var cs = CollisionShape.new()
+	var sh = BoxShape.new()
+	sh.extents = Vector3(0.6, 1.2, hw)
+	cs.shape = sh
+	a.add_child(cs)
+	a.global_transform.origin = Vector3(x0 + 1.5, o.y + 1.2, o.z)
+	a.connect("body_entered", self, "_on_way_out")
+	if show:
+		Geo.label3d(self, "exit", Vector3(x0 + L - 0.02, o.y + 2.0, o.z), 64, Color(0.4, 1.0, 0.5), -PI * 0.5)
+		var g = Models.part(self, Models.box(Vector3(0.03, 0.16, 0.5)), Mats.glow(Color(0.3, 1.0, 0.45), 3.0), Vector3(x0 + L - 0.02, o.y + 2.32, o.z))
+		g.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
+		var l = Geo.omni(self, Vector3(x0 + L - 0.7, o.y + 2.2, o.z), Color(0.45, 1.0, 0.55), 1.5, 5.5)
+		l.add_to_group("lamp")
+
+
+func _on_way_out(body) -> void:
+	if body == player and player and not my_out and not dying and not completing:
 		if Net.active():
-			Net.request("advance", [lv.index])
-		get_tree().create_timer(0.3).connect("timeout", self, "_threshold", [lv.index + 1])
-	# never stay frozen in a doorway (a refused request, a lost packet)
-	get_tree().create_timer(5.0).connect("timeout", self, "_transit_timeout")
+			Net.request("escaped")
+		else:
+			complete()
 
 
-func _swing(door: Spatial, open: bool) -> void:
-	var h = door.get_node_or_null("hinge")
-	if h == null:
+## [E] on a door.
+func door_use(door) -> void:
+	if player == null or my_out or dying or completing:
 		return
-	var tw = create_tween()
-	tw.tween_property(h, "rotation_degrees:y", -96.0 if open else 0.0, 0.3 if open else 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT if open else Tween.EASE_IN)
-
-
-func _slam(door: Spatial) -> void:
-	if is_instance_valid(door):
-		_swing(door, false)
-		Audio.play_at("door_slam", door.global_transform.origin + Vector3(0, 1.2, 0), self, 4.0, 1.0, 60.0)
-
-
-func _leave_run() -> void:
+	if player.global_transform.origin.x > door.global_transform.origin.x:
+		door.deny()       # it only opens from the side you leave through
+		return
+	if door.locked():
+		hud.subtitle("locked.   find the master key.", 2.5)
+		door.deny()
+		return
+	if door.want_open:
+		door.open()       # just keeps it open a little longer
+		return
 	if Net.active():
-		Net.request("escaped")
+		Net.request("door", [door.from_sector])
 	else:
-		complete()
+		door.open()
 
 
-func _transit_timeout() -> void:
-	if _transit and not dying and not my_out and not completing:
-		_transit = false
-		hud.fade_rect.color = Color(0, 0, 0, 0)
-		Audio.set_silence(false)
-		player.controls = true
-		player.look_enabled = true
-
-
-## Through the door: black, the slam behind you, something breathing in the dark... then the lights.
-func _threshold(s: int) -> void:
-	if dying or my_out or completing or s >= levels.size():
-		return
-	var lv = levels[s]
-	hud.fade_rect.color = Color(0, 0, 0, 1)
-	Audio.set_silence(true)
-	Audio.play("door_slam", 0.0)
-	Audio.play("threshold", 0.0)
-	player.add_trauma(0.7)
-	if OS.has_feature("mobile"):
-		Input.vibrate_handheld(140)
+## You walked through a door into sector s.
+func _arrive(s: int) -> void:
 	my_sector = s
-	var arrive = lv.arrive_pos != Vector3.INF
-	player.global_transform.origin = lv.arrive_pos if arrive else lv.spawn_pos
-	player.velocity = Vector3.ZERO
-	player.set_look(lv.arrive_yaw if arrive else lv.spawn_yaw, 0.0)
-	set_view(s)
-	hud.subtitle("nv-7 · signal lost", 1.2)
-	_spawn_greeter(lv)
-	get_tree().create_timer(1.35).connect("timeout", self, "_threshold_light", [s])
-
-
-## The lights snap on. It is right there.
-func _threshold_light(s: int) -> void:
-	if dying or my_out or completing:
-		return
-	hud.fade_rect.color = Color(0, 0, 0, 0)
-	Audio.set_silence(false)
-	Audio.play("threshold_hit", 0.0)
-	flash(0.45)
-	player.add_trauma(0.55)
-	player.controls = true
-	player.look_enabled = true
-	_transit = false
+	if Net.active():
+		Net.request("advance", [s - 1])
+	elif not levels[s].wave_started:
+		levels[s].start_wave()
 	var info: Dictionary = Game.INFO.get(Game.LEVELS[s], {})
-	get_tree().create_timer(2.8).connect("timeout", self, "_title", [info])
+	get_tree().create_timer(0.8).connect("timeout", self, "_title", [info])
 
 
 func _title(info: Dictionary) -> void:
@@ -739,29 +748,57 @@ func _title(info: Dictionary) -> void:
 		get_tree().create_timer(4.5).connect("timeout", self, "_show_goal", [info.get("goal", "")])
 
 
-## The sector's brainrot, only for you, an arm's length away, staring. Only while you look.
-func _spawn_greeter(lv) -> void:
-	_clear_greeter()
+## Only the sector you are in is drawn, plus a neighbour you can see into (you are near its
+## door, or the door is open). Brainrots in hidden sectors are not drawn either.
+func _update_sector_vis() -> void:
+	var cam: Vector3 = player.cam.global_transform.origin
+	var shown = {}
+	for lv in levels:
+		var v = lv.index == view_sector
+		for k in [lv.index, lv.index - 1]:
+			var d = doors.get(k)
+			if v or d == null:
+				continue
+			if (d.from_sector == view_sector or d.to_sector == view_sector) and (d.open_amt > 0.0 or d.global_transform.origin.distance_to(cam) < 14.0):
+				v = true
+		shown[lv.index] = v
+		if lv.geo:
+			lv.geo.visible = v
+	for e in enemies:
+		if is_instance_valid(e) and e.model:
+			e.model.visible = shown.get(e.sector, true)
+
+
+## The next sector's brainrot waits right behind the door, facing it: you see it through the
+## little window before you open it. Only you see yours. Once the door is open, look away and
+## it is gone.
+func _greeter_check() -> void:
+	if my_out or dying or completing or _greeted.has(my_sector):
+		return
+	var d = doors.get(my_sector)
+	if d == null or d.to_sector < 0:
+		return
+	if d.global_transform.origin.distance_to(player.global_transform.origin) > 9.0:
+		return
+	_greeted[my_sector] = true
+	var lv = levels[d.to_sector]
 	if lv.greeter == "":
 		return
+	_clear_greeter()
 	_greeter_id = lv.greeter
+	_greeter_door = d
 	_greeter = Spatial.new()
 	add_child(_greeter)
-	var m = Brainrots.build(lv.greeter)
-	_greeter.add_child(m)
-	var fwd = Vector3(-sin(player._yaw), 0, -cos(player._yaw))
-	var at = player.global_transform.origin + fwd * 1.15
-	at.y = lv.origin.y
-	_greeter.global_transform.origin = at
-	_greeter.rotation.y = atan2(fwd.x, fwd.z)
+	_greeter.add_child(Brainrots.build(lv.greeter))
+	_greeter.global_transform.origin = d.global_transform.origin + Vector3(d.depth * 0.5 + 1.5, 0, 0)
+	_greeter.rotation.y = PI * 0.5        # facing the door
 	var l = OmniLight.new()
 	l.light_color = Color(1.0, 0.86, 0.72)
-	l.light_energy = 1.3
+	l.light_energy = 1.2
 	l.omni_range = 3.0
 	l.light_cull_mask = Geo.VIS_ACTOR
 	_greeter.add_child(l)
 	l.translation = Vector3(0, 2.2, -0.6)
-	_greeter_t = 0.0
 	_greeter_gone = 0.0
 
 
@@ -775,32 +812,44 @@ func _greeter_frame(delta: float) -> void:
 	if not is_instance_valid(_greeter):
 		_greeter = null
 		return
-	if _transit:
-		return
-	_greeter_t += delta
+	if not is_instance_valid(_greeter_door) or _greeter_door.open_amt < 0.7:
+		return            # waiting behind the closed door
 	var head = _greeter.global_transform.origin + Vector3(0, 1.4, 0)
-	if not player.can_see(head, 34.0, 12.0):
+	var near = player.global_transform.origin.distance_to(_greeter.global_transform.origin) < 1.0
+	if near or not player.can_see(head, 34.0, 14.0):
 		_greeter_gone += delta
-		if _greeter_gone > 0.1:
-			# you looked away: gone, and something lands right behind you
+		if near or _greeter_gone > 0.12:
+			# gone, and something lands right behind you
 			_clear_greeter()
 			var back: Vector3 = player.cam.global_transform.basis.z
 			back.y = 0.0
 			var at = player.global_transform.origin + back.normalized() * 1.4 + Vector3(0, 1.2, 0)
 			Audio.play_at("key_hop" if _greeter_id == "keys" else "ev_whisper", at, self, 6.0, 0.8, 20.0)
 			Audio.play("whisper", -8.0, 0.7)
-	elif _greeter_t > 6.5:
-		# you can't stare forever: the lights stutter, and it is not there anymore
-		_clear_greeter()
-		hud.fade_rect.color = Color(0, 0, 0, 1)
-		Audio.play("flash_off", -4.0, 0.6)
-		get_tree().create_timer(0.2).connect("timeout", self, "_flicker_back")
+	else:
+		_greeter_gone = 0.0
 
 
-func _flicker_back() -> void:
-	if not dying and not my_out and not completing and not _transit:
-		hud.fade_rect.color = Color(0, 0, 0, 0)
-		Audio.play("flash_on", -8.0, 0.5)
+## Moving between sectors: the haze, the light and the tint drift over instead of snapping.
+func _blend_env(c: Dictionary, dur: float) -> void:
+	var tw = create_tween().set_parallel(true).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(env, "ambient_light_color", c.get("ambient", Color(0.35, 0.3, 0.28)), dur)
+	tw.tween_property(env, "ambient_light_energy", c.get("ambient_energy", 0.3), dur)
+	tw.tween_property(env, "fog_depth_begin", c.get("fog_begin", 6.0), dur)
+	tw.tween_property(env, "fog_depth_end", c.get("fog_end", 50.0), dur)
+	tw.tween_property(env, "fog_depth_curve", c.get("fog_curve", 1.0), dur)
+	tw.tween_property(env, "adjustment_contrast", c.get("contrast", 1.1), dur)
+	tw.tween_property(env, "adjustment_saturation", c.get("saturation", 0.85), dur)
+	tw.tween_property(self, "_fog_base", c.get("fog_color", Color(0.02, 0.02, 0.02)), dur)
+	var t0: Vector3 = get_meta("tint") if has_meta("tint") else Vector3(1, 1, 1)
+	var t1: Vector3 = c.get("tint", Vector3(1.0, 0.97, 0.92))
+	tw.tween_method(self, "_set_tint", t0, t1, dur)
+	set_meta("tint", t1)
+
+
+func _set_tint(t: Vector3) -> void:
+	if post:
+		post.set_shader_param("tint", t)
 
 
 # ------------------------------------------------------------------ back from the dead (waves)
@@ -819,7 +868,6 @@ func revive_local(s: int) -> void:
 	my_out = false
 	dying = false
 	completing = false
-	_transit = false
 	if has_meta("can_skip"):
 		remove_meta("can_skip")
 	player.unspectate()
@@ -868,7 +916,6 @@ func kill(_id: String, msg: String) -> void:
 	if dying or completing or my_out or player == null:
 		return
 	dying = true
-	_transit = false
 	_clear_greeter()
 	player.controls = false
 	player.look_enabled = false

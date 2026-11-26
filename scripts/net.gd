@@ -474,6 +474,12 @@ func _handle(id: int, type: String, args: Array) -> void:
 				p.photo_of = str(args[0])
 			if lv and lv.has_method("on_request"):
 				lv.on_request(id, type, args)
+		"door":
+			# open the sliding door of the sector you are in (if that sector lets you)
+			var s = int(args[0]) if args.size() > 0 else -1
+			var locked = lv and lv.has_method("exit_locked") and lv.exit_locked()
+			if p.alive and not p.escaped and s == int(p.sector) and not locked:
+				event("door", [s])
 		"advance":
 			# through the exit door into the next sector
 			var from = int(args[0]) if args.size() > 0 else -1

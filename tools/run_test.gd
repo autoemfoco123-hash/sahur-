@@ -106,21 +106,26 @@ func _event(act: String) -> void:
 			e.look_at(pl.global_transform.origin, Vector3.UP)
 			e.rotation.x = 0
 	elif act.begins_with("door"):
-		# stand in front of a sector's exit door and open it (door = sector 0, door1 = sector 1)
+		# stand 2 m in front of a sector's sliding door, facing it (door = sector 0, door1 = sector 1)
 		var si = int(act.substr(4)) if act.length() > 4 else 0
-		var lv = w.levels[si]
-		var d: Spatial = lv.exit_root
-		var front: Vector3 = d.global_transform.xform(Vector3(0, 0, 1.5))
-		w.player.global_transform.origin = front + Vector3(0, 0.1, 0)
-		var to = d.global_transform.origin - front
-		w.player.set_look(atan2(-to.x, -to.z), 0.0)
-		print("door %d at %s locked=%s" % [si, str(d.global_transform.origin), str(lv.has_method("exit_locked") and lv.exit_locked())])
+		var d = w.doors[si]
+		var o: Vector3 = d.global_transform.origin
+		w.player.global_transform.origin = o + Vector3(-d.depth * 0.5 - 2.0, 0.1, 0)
+		w.player.set_look(-PI * 0.5, 0.0)
+		print("door %d at %s locked=%s" % [si, str(o), str(d.locked())])
 	elif act.begins_with("xopen"):
 		var si = int(act.substr(5)) if act.length() > 5 else 0
-		w.use_exit(w.levels[si], w.levels[si].exit_root)
+		w.door_use(w.doors[si])
+	elif act == "fwdon":
+		Input.action_press("move_forward")
+	elif act == "fwdoff":
+		Input.action_release("move_forward")
 	elif act == "where":
 		var pp = w.player.global_transform.origin if w.player else Vector3.ZERO
-		print("where: my_sector=%d view=%d level=%d pos=%s transit=%s greeter=%s fade=%.2f out=%s dying=%s completing=%s" % [w.my_sector, w.view_sector, w.level.index, str(pp), str(w._transit), str(w._greeter != null), w.hud.fade_rect.color.a if w.hud else -1.0, str(w.my_out), str(w.dying), str(w.completing)])
+		var dd = ""
+		for k in w.doors:
+			dd += "%d:%.2f " % [k, w.doors[k].open_amt]
+		print("where: my_sector=%d view=%d level=%d pos=%s doors=%s greeter=%s vis=%s out=%s dying=%s completing=%s" % [w.my_sector, w.view_sector, w.level.index, str(pp.round()), dd, str(w._greeter != null), str([w.levels[0].geo.visible, w.levels[1].geo.visible]), str(w.my_out), str(w.dying), str(w.completing)])
 	elif act == "grabmaster":
 		var lv = w.levels[1]
 		w.player.global_transform.origin = lv.master.global_transform.origin + Vector3(1.4, 0.1, 0)

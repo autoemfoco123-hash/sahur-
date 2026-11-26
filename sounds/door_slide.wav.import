@@ -2,12 +2,12 @@
 
 importer="wav"
 type="AudioStreamSample"
-path="res://.import/door_rattle.wav-e9c9f1f7612fe80d2dd7d3db0775a9a0.sample"
+path="res://.import/door_slide.wav-fdabfea4db6051e5edb0ccabebcd3d48.sample"
 
 [deps]
 
-source_file="res://sounds/door_rattle.wav"
-dest_files=[ "res://.import/door_rattle.wav-e9c9f1f7612fe80d2dd7d3db0775a9a0.sample" ]
+source_file="res://sounds/door_slide.wav"
+dest_files=[ "res://.import/door_slide.wav-fdabfea4db6051e5edb0ccabebcd3d48.sample" ]
 
 [params]
 

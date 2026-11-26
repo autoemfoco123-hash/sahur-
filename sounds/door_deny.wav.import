@@ -2,12 +2,12 @@
 
 importer="wav"
 type="AudioStreamSample"
-path="res://.import/door_slam.wav-415d0e6ccb77e3f306746669b7e3c38b.sample"
+path="res://.import/door_deny.wav-1858074c5209d835d55192fbfb4ce225.sample"
 
 [deps]
 
-source_file="res://sounds/door_slam.wav"
-dest_files=[ "res://.import/door_slam.wav-415d0e6ccb77e3f306746669b7e3c38b.sample" ]
+source_file="res://sounds/door_deny.wav"
+dest_files=[ "res://.import/door_deny.wav-1858074c5209d835d55192fbfb4ce225.sample" ]
 
 [params]
 
