@@ -10,6 +10,7 @@ extends Node
 
 const DOOR_W = 1.3
 const DOOR_H = 2.2
+const MISSION_POINTS = 300
 
 var world
 var rng: RandomNumberGenerator
@@ -32,6 +33,7 @@ var has_entry = false       # a door from the previous sector in the west wall..
 var entry_z = 0.0           # ...at this world z
 var exit_z = 0.0            # world z of the exit door in the east wall
 var geo: Spatial            # this sector's static meshes
+var missions = []           # [{id, text, goal, progress, done, fmt}] (team missions; the door opens when all are done)
 
 
 func build() -> void:
@@ -140,3 +142,105 @@ func ir_mark(pos: Vector3, rot_y: float, text: String, size := 90) -> Label3D:
 	l.layers = 2
 	return l
 
+
+
+# ------------------------------------------------------------------ events and missions
+## Sector events go to the same sector on every machine.
+func _emit(type: String, args: Array) -> void:
+	if Net.active():
+		Net.event("sector", [index, type, args])
+	else:
+		net_event(type, args)
+
+
+func net_event(_type: String, _args: Array) -> void:
+	pass
+
+
+## fmt: "count" (2/4) · "best" (best 62/85) · "secs" (3/8 s) · "" (nothing)
+func add_mission(id: String, text: String, goal: float, fmt := "count") -> void:
+	missions.append({"id": id, "text": text, "goal": goal, "progress": 0.0, "done": false, "fmt": fmt})
+
+
+func _mission_index(id: String) -> int:
+	for i in missions.size():
+		if missions[i].id == id:
+			return i
+	return -1
+
+
+func mission_progress(id: String) -> float:
+	var i = _mission_index(id)
+	return missions[i].progress if i >= 0 else 0.0
+
+
+## Server (or offline): set a mission's progress; it completes at its goal. pid gets the bonus.
+func mission_set(id: String, value: float, pid := -1) -> void:
+	if not authority():
+		return
+	var i = _mission_index(id)
+	if i < 0 or missions[i].done or value == missions[i].progress:
+		return
+	var done = value >= missions[i].goal
+	if Net.active():
+		Net.event("sector", [index, "mission", [i, value, done, pid]])
+	else:
+		apply_mission([i, value, done, pid])
+
+
+## Every machine: a mission moved.
+func apply_mission(a: Array) -> void:
+	var m = missions[a[0]]
+	var was: bool = m.done
+	m.progress = a[1]
+	m.done = was or a[2]
+	if m.done and not was:
+		if authority() and a[3] >= 0:
+			world.award(a[3], MISSION_POINTS, "mission")
+		if here() and world.hud:
+			var who = "you" if a[3] == Net.my_id() or not Net.active() else Net.pname(a[3])
+			world.hud.subtitle("mission done: %s   (%s)" % [m.text, who], 3.5)
+			Audio.play("ding", -4.0, 1.1)
+			if missions_done():
+				get_tree().create_timer(3.6).connect("timeout", self, "_all_done")
+	world.missions_changed(self)
+
+
+func _all_done() -> void:
+	if here() and world.hud:
+		world.hud.subtitle("every mission done.   the door is open.", 4.0)
+		Audio.play("ding", -2.0, 0.8)
+
+
+func missions_done() -> bool:
+	for m in missions:
+		if not m.done:
+			return false
+	return true
+
+
+func missions_left() -> int:
+	var n = 0
+	for m in missions:
+		if not m.done:
+			n += 1
+	return n
+
+
+## The exit door stays locked until every mission of the sector is done.
+func exit_locked() -> bool:
+	return not missions_done()
+
+
+## "2/4", "best 62/85", "3/8 s" for the hud.
+static func mission_text(m: Dictionary) -> String:
+	if m.done:
+		return m.text
+	match m.fmt:
+		"count":
+			return "%s   %d/%d" % [m.text, int(m.progress), int(m.goal)]
+		"best":
+			return "%s   best %d" % [m.text, int(m.progress)]
+		"secs":
+			return "%s   %d/%d s" % [m.text, int(m.progress), int(m.goal)]
+	return m.text

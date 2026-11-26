@@ -23,6 +23,11 @@ var walls_h = {}
 var walls_v = {}
 var _wall_list = []
 var bake
+var tapes = []            # where the lost hush tapes lie (the same on every machine)
+var _tape_nodes = {}
+var _tape_taken = {}
+var _tape_t = 0.0
+var streak = 0            # calls answered in a row
 var open_ratio = 0.5      # share of maze walls knocked out (open-plan office)
 var pillar_ratio = 0.45   # free-standing pillars at empty corners
 
@@ -44,6 +49,11 @@ func build() -> void:
 	var far = _exit_cell(dist)
 	exit_z = _cell(far).z
 	_build_walls(om)
+	# the missions: the door stays shut until all three are done
+	add_mission("portrait", "a portrait of him, 85+", 85, "best")
+	add_mission("streak", "answer him 3 calls in a row", 3)
+	add_mission("tapes", "recover the 4 lost hush tapes", 4)
+	_place_tapes(dist, start, far)
 	# Square ceiling panels, snapped to the 60 cm drop-ceiling grid
 	var cells = dist.keys()
 	cells.shuffle()
@@ -88,6 +98,8 @@ func build() -> void:
 		note(pts[1], "hush · incident log · operative 01\n\noperative 01 pried his goggles off at 03:00:41.\nthe feed shows him standing still for six hours.\nsmiling.\n\nthe goggles kept recording on the floor.\nthe last frame is a wooden face.\n\n(operative 01 was not recovered)")
 	# Tung
 	tung = enemy(TungAI, "tung", _tung_spawn(dist, far, sp) + Vector3(0, 0.1, 0))
+	for i in tapes.size():
+		_tape_visual(i)
 	# hush chalk on the carpet: arrows to the exit
 	var path = [far]
 	while path[-1] != start and par.has(path[-1]):
@@ -166,6 +178,87 @@ func _arrival(start: Vector2) -> void:
 	if has_entry:
 		arrive_pos = Vector3(origin.x + 1.1, 0.2, entry_z)
 		arrive_yaw = -PI * 0.5
+
+
+# ------------------------------------------------------------------ the lost tapes
+## Four tapes, deep in the dead ends furthest from the start, spread out.
+func _place_tapes(dist: Dictionary, start: Vector2, far: Vector2) -> void:
+	var cells = dist.keys()
+	cells.sort()
+	var cand = []
+	for c in cells:
+		if c == start or c == far:
+			continue
+		var opens = []
+		for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+			if _passable(c, c + d):
+				opens.append(d)
+		# dead ends first (one way in), then simply the furthest cells
+		var score = dist[c] + (1000 if opens.size() == 1 else 0)
+		var back = opens[0] if opens.size() == 1 else Vector2.ZERO
+		cand.append([score, c, back])
+	cand.sort_custom(self, "_desc0")
+	for e in cand:
+		if tapes.size() >= 4:
+			break
+		var p: Vector3 = _cell(e[1]) - Vector3(e[2].x, 0, e[2].y) * 1.3
+		var ok = _cell(e[1]).distance_to(_cell(start)) > 16.0
+		for q in tapes:
+			if q.distance_to(p) < 12.0:
+				ok = false
+		if ok:
+			tapes.append(p)
+
+
+func _desc0(a, b) -> bool:
+	return a[0] > b[0]
+
+
+func _tape_visual(i: int) -> void:
+	var root = Spatial.new()
+	geo.add_child(root)
+	root.global_transform.origin = tapes[i]
+	root.rotation.y = rng.randf_range(-PI, PI)
+	var shell = Mats.std(Color(0.11, 0.11, 0.12), 0.55, 0.2)
+	Models.part(root, Models.box(Vector3(0.22, 0.05, 0.14)), shell, Vector3(0, 0.025, 0))
+	Models.part(root, Models.box(Vector3(0.13, 0.004, 0.05)), Mats.std(Color(0.85, 0.8, 0.62), 0.8), Vector3(-0.02, 0.052, -0.02))
+	for x in [-0.05, 0.05]:
+		Models.part(root, Models.box(Vector3(0.035, 0.006, 0.035)), Mats.std(Color(0.3, 0.3, 0.32), 0.4, 0.6), Vector3(x, 0.052, 0.035))
+	var led = Models.part(root, Models.box(Vector3(0.016, 0.012, 0.016)), Mats.unshaded(Color(1.0, 0.08, 0.04)), Vector3(0.085, 0.056, 0.05))
+	led.name = "led"
+	var l = Geo.omni(root, Vector3(0, 0.3, 0), Color(1.0, 0.25, 0.15), 0.7, 1.8)
+	l.light_cull_mask = Geo.VIS_ACTOR
+	Models.set_layers(root, 1 | Geo.VIS_ACTOR)
+	if player():
+		Interactable.make(root, tapes[i] + Vector3(0, 0.15, 0), 0.45, "take the tape", self, "_take_tape", [i], false)
+	_tape_nodes[i] = root
+
+
+func _take_tape(i: int) -> void:
+	if Net.active():
+		Net.request("tape", [i])
+	else:
+		on_request(1, "tape", [i])
+
+
+## The tapes blink and beep quietly: you can hunt for them by ear.
+func _process(delta: float) -> void:
+	if _tape_nodes.empty() or not here():
+		return
+	_tape_t -= delta
+	if _tape_t > 0.0:
+		return
+	_tape_t = 1.6
+	var pp = player().global_transform.origin
+	for i in _tape_nodes:
+		var n = _tape_nodes[i]
+		if not is_instance_valid(n):
+			continue
+		var led = n.get_node_or_null("led")
+		if led:
+			led.visible = not led.visible
+		if n.global_transform.origin.distance_to(pp) < 16.0:
+			Audio.play_at("tick", n.global_transform.origin + Vector3(0, 0.1, 0), world, -4.0, 1.7, 16.0)
 
 
 ## Tung starts halfway down the maze, far from the operatives.
@@ -371,6 +464,8 @@ func _physics_process(delta: float) -> void:
 		if call_t > 3 * 2.6 + 0.8:
 			call_timer = rng.randf_range(20.0, 30.0)
 			if not answered:
+				streak = 0
+				mission_set("streak", 0)
 				# "he is coming for the quiet one": somebody who stayed quiet
 				var ts = world.targets(index)
 				tung.hunt_id = ts[randi() % ts.size()].id
@@ -378,14 +473,6 @@ func _physics_process(delta: float) -> void:
 				tung.set_state(TungAI.S.HUNT)
 				tung.hunt_id = tung.hunt_id
 			_emit("call_end", [])
-
-
-## Sector events go to the same sector on every machine.
-func _emit(type: String, args: Array) -> void:
-	if Net.active():
-		Net.event("sector", [index, type, args])
-	else:
-		net_event(type, args)
 
 
 ## Runs on every machine (server included). Only operatives looking at this sector see the text.
@@ -408,6 +495,15 @@ func net_event(type: String, args: Array) -> void:
 			if hud:
 				var who = "you" if args[0] == Net.my_id() or not Net.active() else Net.pname(args[0])
 				hud.subtitle("%s shouted when he wasn't calling.   he heard." % who, 3.0)
+		"tape":
+			var i: int = args[0]
+			if _tape_nodes.has(i) and is_instance_valid(_tape_nodes[i]):
+				_tape_nodes[i].queue_free()
+			_tape_nodes.erase(i)
+			if hud:
+				var who = "you" if args[1] == Net.my_id() or not Net.active() else Net.pname(args[1])
+				hud.subtitle("%s recovered a tape." % who, 2.5)
+				Audio.play("pickup", -3.0, 0.9)
 		"flash_woke":
 			if hud:
 				var who = "your" if args[0] == Net.my_id() or not Net.active() else Net.pname(args[0]) + "'s"
@@ -446,8 +542,19 @@ func _knock_voice() -> void:
 
 ## Server: requests from operatives. A flash in his face wakes him up.
 func on_request(pid: int, type: String, args: Array) -> void:
+	if type == "tape":
+		var i = int(args[0]) if args.size() > 0 else -1
+		var t = world.target_by_id(pid)
+		if i < 0 or i >= tapes.size() or _tape_taken.has(i) or t == null or t.pos.distance_to(tapes[i]) > 2.8:
+			return
+		_tape_taken[i] = true
+		_emit("tape", [i, pid])
+		mission_set("tapes", _tape_taken.size(), pid)
+		return
 	if type != "photo" or tung == null or args.empty() or str(args[0]) != "tung":
 		return
+	if args.size() > 1:
+		mission_set("portrait", max(mission_progress("portrait"), float(args[1])), pid)
 	var t = world.target_by_id(pid)
 	if t and t.pos.distance_to(tung.global_transform.origin) < 12.0 and not tung.is_threat():
 		tung.chase_id = pid
@@ -460,7 +567,11 @@ func on_shout(pid: int) -> void:
 	if calling and not answered:
 		_emit("answered", [pid])
 		tung.set_state(TungAI.S.PASSIVE)
+		streak += 1
+		mission_set("streak", streak, pid)
 	elif not calling:
+		streak = 0
+		mission_set("streak", 0)
 		_emit("wrong_shout", [pid])
 		tung.set_state(TungAI.S.HUNT)
 		tung.hunt_id = pid

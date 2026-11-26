@@ -126,6 +126,21 @@ func _event(act: String) -> void:
 		for k in w.doors:
 			dd += "%d:%.2f " % [k, w.doors[k].open_amt]
 		print("where: my_sector=%d view=%d level=%d pos=%s doors=%s greeter=%s vis=%s out=%s dying=%s completing=%s" % [w.my_sector, w.view_sector, w.level.index, str(pp.round()), dd, str(w._greeter != null), str([w.levels[0].geo.visible, w.levels[1].geo.visible]), str(w.my_out), str(w.dying), str(w.completing)])
+	elif act == "missions":
+		var lv = w.levels[w.my_sector]
+		var ms = PoolStringArray()
+		for m in lv.missions:
+			ms.append("%s=%s%s" % [m.id, str(m.progress), "✓" if m.done else ""])
+		print("missions s%d: %s · locked=%s · points=%d" % [w.my_sector, ms.join(" "), str(lv.exit_locked()), w.my_points()])
+	elif act.begins_with("taketape"):
+		var lv = w.levels[0]
+		var i = int(act.substr(8)) if act.length() > 8 else 0
+		w.player.global_transform.origin = lv.tapes[i] + Vector3(0.8, 0.1, 0)
+		lv._take_tape(i)
+	elif act == "alldone":
+		var lv = w.levels[w.my_sector]
+		for m in lv.missions:
+			lv.mission_set(m.id, m.goal, 1)
 	elif act == "grabmaster":
 		var lv = w.levels[1]
 		w.player.global_transform.origin = lv.master.global_transform.origin + Vector3(1.4, 0.1, 0)
@@ -184,6 +199,14 @@ func _event(act: String) -> void:
 		pl.global_transform.origin = m.global_transform.origin + Vector3(1.6, 0.1, 0)
 		lv._grab()
 		print("after: exit_locked=%s master.taken=%s enraged=%s visible=%s" % [str(lv.exit_locked()), str(m.taken), str(lv.keys[1].enraged), str(m.visible)])
+	elif act == "keyclose":
+		var pl = w.player
+		var k1 = w.level.keys[1]
+		var f = -pl.cam.global_transform.basis.z
+		f.y = 0
+		k1.global_transform.origin = pl.global_transform.origin + f.normalized() * 1.6
+		k1.look_at(pl.global_transform.origin, Vector3.UP)
+		k1.rotation.x = 0
 	elif act == "keynear":
 		var pl = w.player
 		var k1 = w.level.keys[1]

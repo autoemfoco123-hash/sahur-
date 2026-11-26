@@ -4,12 +4,15 @@ extends Node
 ## Every shot is graded on the spot: how big the entity is in frame, how centred, whether it is
 ## looking into the lens, how steady you held it, and whether the flash reached it.
 ## The flash has consequences: Tung wakes up when it goes off in his face; it freezes the keys.
+## Photos are points: a photo is worth how much it beats your best photo of that same brainrot
+## (x1.5 if it was hunting when you took it). The server keeps the score.
 
 const COOLDOWN = 1.4
 const LENS_FOV = 58.0     # the camera's lens: matches the middle of the goggles' fisheye view
 
 var world
 var best = {}             # entity id -> best score this round
+var mine = {}             # enemy index -> my best score of that one (to show the points)
 var shots = 0
 var _cd = 0.0
 var _flash: OmniLight
@@ -71,12 +74,21 @@ func take() -> void:
 	var is_best = result.score > 0 and result.score > best.get(result.id, 0)
 	if is_best:
 		best[result.id] = result.score
+	# what this one is worth (the server has the final word)
+	result["gain"] = 0
+	if result.inst >= 0:
+		var g = result.score - int(mine.get(result.inst, 0))
+		if g > 0:
+			mine[result.inst] = result.score
+			result.gain = int(round(g * 1.5)) if result.threat else g
+	elif result.id != "":
+		result.grade = "a phantom.   it doesn't count."
 	if world.hud:
 		world.hud.show_photo(tex, result, is_best, best)
 	if Net.active():
-		Net.request("photo", [result.id, result.score])
-	elif world.level and world.level.has_method("on_request"):
-		world.level.on_request(1, "photo", [result.id, result.score])
+		Net.request("photo", [result.id, result.score, result.inst])
+	else:
+		world.photo_scored(1, result.id, result.score, result.inst)
 	_busy = false
 
 
@@ -86,7 +98,7 @@ func _grade() -> Dictionary:
 	var from = cam.global_transform.origin
 	var vp = world.get_viewport().size
 	var half = tan(deg2rad(cam.fov) * 0.5)
-	var out = {"score": 0, "id": "", "name": "nothing", "grade": "nothing on it.", "dist": 0.0}
+	var out = {"score": 0, "id": "", "name": "nothing", "grade": "nothing on it.", "dist": 0.0, "inst": -1, "threat": false}
 	for m in get_tree().get_nodes_in_group("photographable"):
 		if not is_instance_valid(m) or not m.is_visible_in_tree():
 			continue
@@ -121,7 +133,11 @@ func _grade() -> Dictionary:
 		s = clamp(round(s), 1.0, 100.0)
 		if s > out.score:
 			var id: String = m.get_meta("photo_id")
-			out = {"score": int(s), "id": id, "name": _name(id), "grade": _word(s), "dist": dist}
+			# a real brainrot (not one of the things you only think you see)
+			var e = m.get_parent()
+			var inst = world.enemies.find(e)
+			var threat = inst >= 0 and e.is_threat()
+			out = {"score": int(s), "id": id, "name": _name(id), "grade": _word(s), "dist": dist, "inst": inst, "threat": threat}
 	return out
 
 

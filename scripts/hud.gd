@@ -35,6 +35,9 @@ var photo_score: Label
 var photo_name: Label
 var photo_grade: Label
 var evidence: Label
+var missions_box: VBoxContainer
+var points_label: Label
+var points_pop: Label
 var _photo_tw
 var roster: Label
 var _roster_t = 0.0
@@ -169,6 +172,10 @@ func _ready() -> void:
 	nv_tc = UI.label("03:00:00:00", 13, Color(1, 1, 1, 0.75))
 	tl.add_child(nv_tc)
 	tl.add_child(UI.label("operative 03 · lantern", 12, Color(1, 1, 1, 0.5)))
+	tl.add_child(UI.label(" ", 6))
+	missions_box = VBoxContainer.new()
+	missions_box.add_constant_override("separation", 1)
+	tl.add_child(missions_box)
 	var tr = VBoxContainer.new()
 	tr.anchor_left = 1.0
 	tr.anchor_right = 1.0
@@ -184,6 +191,11 @@ func _ready() -> void:
 	roster = UI.label("", 12, Color(1, 1, 1, 0.62), "light", Label.ALIGN_RIGHT)
 	tr.add_child(UI.label(" ", 8))
 	tr.add_child(roster)
+	points_label = UI.label("0 pts", 24, UI.AMBER, "light", Label.ALIGN_RIGHT)
+	tr.add_child(points_label)
+	points_pop = UI.label("", 13, UI.AMBER, "medium", Label.ALIGN_RIGHT)
+	points_pop.modulate.a = 0.0
+	tr.add_child(points_pop)
 	evidence = UI.label("evidence: none yet", 12, UI.AMBER, "medium", Label.ALIGN_RIGHT)
 	tr.add_child(evidence)
 
@@ -511,7 +523,7 @@ func _process(delta: float) -> void:
 		for pid in Net.round_ids():
 			var p = Net.players[pid]
 			var st = "out" if p.escaped else ("rot" if not p.alive else "sector %d" % int(p.get("sector", 0)))
-			lines.append("%s · %s" % [p.name, st])
+			lines.append("%s · %s · %d" % [p.name, st, int(p.get("points", 0))])
 		roster.text = lines.join("\n")
 	var c = Game.brain_cells
 	cells_bar.value = c
@@ -553,7 +565,10 @@ func show_photo(tex: Texture, r: Dictionary, is_best: bool, best: Dictionary) ->
 	photo_img.texture = tex
 	photo_score.text = str(r.score)
 	photo_name.text = r.name.to_lower()
-	photo_grade.text = (r.grade + ("   new best" if is_best else "")).to_lower()
+	var tail = ""
+	if r.get("inst", -1) >= 0:
+		tail = ("   +%d pts" % r.gain) if r.get("gain", 0) > 0 else "   no better than your last one"
+	photo_grade.text = (r.grade + ("   new best" if is_best else "") + tail).to_lower()
 	photo_box.visible = true
 	photo_box.modulate.a = 0.0
 	photo_box.rect_rotation = rand_range(-3.0, 3.0)
@@ -568,6 +583,41 @@ func show_photo(tex: Texture, r: Dictionary, is_best: bool, best: Dictionary) ->
 	for k in best:
 		parts.append("%s %d" % [k, best[k]])
 	evidence.text = ("evidence: " + parts.join(" · ")) if parts.size() > 0 else "evidence: none yet"
+
+
+## The missions of the sector you are in: ○ to do (with progress), ✓ done.
+func set_missions(title: String, ms: Array) -> void:
+	for c in missions_box.get_children():
+		missions_box.remove_child(c)
+		c.queue_free()
+	if ms.empty():
+		return
+	missions_box.add_child(UI.label(("missions · " + title).to_lower(), 14, UI.AMBER, "medium"))
+	for m in ms:
+		var t = LevelBase.mission_text(m)
+		var l = UI.label((("✓  " if m.done else "○  ") + t).to_lower(), 14, UI.GREEN if m.done else UI.WHITE, "medium")
+		l.add_color_override("font_color_shadow", Color(0, 0, 0, 0.85))
+		l.add_constant_override("shadow_offset_x", 1)
+		l.add_constant_override("shadow_offset_y", 1)
+		missions_box.add_child(l)
+
+
+func flash_missions() -> void:
+	var tw = create_tween()
+	for i in 3:
+		tw.tween_property(missions_box, "modulate", Color(1.0, 0.6, 0.2), 0.12)
+		tw.tween_property(missions_box, "modulate", Color(1, 1, 1), 0.18)
+
+
+func set_points(total: int, gain := 0, why := "") -> void:
+	points_label.text = "%d pts" % total
+	if gain <= 0:
+		return
+	points_pop.text = ("+%d  %s" % [gain, why]).to_lower()
+	points_pop.modulate.a = 1.0
+	var tw = create_tween()
+	tw.tween_interval(1.8)
+	tw.tween_property(points_pop, "modulate:a", 0.0, 0.8)
 
 
 func set_spectate(t: String) -> void:

@@ -105,7 +105,7 @@ func _new_player(n: String) -> Dictionary:
 	var ci = 0
 	while ci in used and ci < COLORS.size() - 1:
 		ci += 1
-	return {"name": _clean(n), "cidx": ci, "color": COLORS[ci], "ready": false, "alive": true, "escaped": false, "in_game": false, "photo": 0, "photo_of": "", "sector": 0}
+	return {"name": _clean(n), "cidx": ci, "color": COLORS[ci], "ready": false, "alive": true, "escaped": false, "in_game": false, "photo": 0, "photo_of": "", "sector": 0, "points": 0, "photo_best": {}}
 
 
 func _clean(n: String) -> String:
@@ -318,6 +318,8 @@ func _start_round() -> void:
 		players[id].ready = false
 		players[id].photo = 0
 		players[id].photo_of = ""
+		players[id].points = 0
+		players[id].photo_best = {}
 	state = PLAYING
 	_end_t = -1.0
 	_log("round start · %s · seed %d · %d operatives" % [level_name(), round_seed, players.size()])
@@ -431,6 +433,9 @@ remote func _ev(type: String, args: Array) -> void:
 			if players.has(args[0]):
 				players[args[0]].alive = true
 				players[args[0]].sector = args[1]
+		"points":
+			if players.has(args[0]):
+				players[args[0]].points = args[1]
 		"left":
 			pass
 	if world:
@@ -472,8 +477,13 @@ func _handle(id: int, type: String, args: Array) -> void:
 			if args.size() > 1 and int(args[1]) > int(p.get("photo", 0)):
 				p.photo = int(args[1])
 				p.photo_of = str(args[0])
-			if lv and lv.has_method("on_request"):
-				lv.on_request(id, type, args)
+			if world and args.size() > 1:
+				world.photo_scored(id, str(args[0]), int(args[1]), int(args[2]) if args.size() > 2 else -1)
+		"cheat_missions":
+			# test servers only (started with --cheat-missions): finish this sector's missions
+			if "--cheat-missions" in OS.get_cmdline_args() and lv:
+				for m in lv.missions:
+					lv.mission_set(m.id, m.goal, id)
 		"door":
 			# open the sliding door of the sector you are in (if that sector lets you)
 			var s = int(args[0]) if args.size() > 0 else -1
@@ -506,6 +516,14 @@ func _handle(id: int, type: String, args: Array) -> void:
 				lv.on_request(id, type, args)
 
 
+## Server: points for an operative (photos, missions).
+func award(id: int, pts: int, why: String) -> void:
+	if not is_server() or not players.has(id) or pts <= 0:
+		return
+	players[id].points = int(players[id].get("points", 0)) + pts
+	event("points", [id, players[id].points, pts, why])
+
+
 ## Server: a brainrot reached a player.
 func catch(id: int, msg: String, killer := "tung") -> void:
 	if is_server() and players.has(id) and players[id].alive and not players[id].escaped:
@@ -529,7 +547,7 @@ func _end_round() -> void:
 	for id in round_ids():
 		var p = players[id]
 		var where = "sector %d" % int(p.get("sector", 0))
-		res.append([p.name, "made it out" if p.escaped else "became rot in " + where, p.cidx, p.get("photo", 0), p.get("photo_of", "")])
+		res.append([p.name, "made it out" if p.escaped else "became rot in " + where, p.cidx, p.get("photo", 0), p.get("photo_of", ""), int(p.get("points", 0))])
 		anyone_out = anyone_out or p.escaped
 	_log("round over · deepest sector %d · %s" % [wave, "someone made it out" if anyone_out else "nobody made it out"])
 	for id in players:

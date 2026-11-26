@@ -128,6 +128,19 @@ func _event(act: String) -> void:
 		# step through the (open) door to the other side
 		var d = w.doors[w.my_sector]
 		w.player.global_transform.origin = d.global_transform.origin + Vector3(d.depth * 0.5 + 1.0, 0.1, 0)
+	elif act == "missions":
+		var lv = w.levels[w.my_sector]
+		var ms = PoolStringArray()
+		for m in lv.missions:
+			ms.append("%s=%s%s" % [m.id, str(m.progress), "+" if m.done else ""])
+		print("[", pname, "] missions s%d: %s locked=%s points=%d" % [w.my_sector, ms.join(" "), str(lv.exit_locked()), w.my_points()])
+	elif act == "cheat":
+		net.request("cheat_missions")
+	elif act.begins_with("totape"):
+		var i = int(act.substr(6))
+		w.player.global_transform.origin = w.levels[0].tapes[i] + Vector3(0.8, 0.1, 0)
+	elif act.begins_with("tape"):
+		w.levels[0]._take_tape(int(act.substr(4)))
 	elif act == "tomaster":
 		# right next to the master key, staring at it (watched, it can't run)
 		var lv = w.levels[1]

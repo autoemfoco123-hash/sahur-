@@ -65,7 +65,10 @@ var _greeter_gone = 0.0
 var _greeter_id = ""
 var _greeted = {}
 var _fog_base = Color(0, 0, 0)
+var _points = 0           # offline: the local operative's points
+var _photo_best_off = {}  # offline: enemy index -> best photo score
 var _pending_revive = -1
+var round_over = false
 
 
 func _ready() -> void:
@@ -229,6 +232,7 @@ func set_view(s: int, force := false) -> void:
 		_blend_env(level.env_cfg, 1.2)
 	if player == null:
 		return
+	missions_changed(level)
 	level.enter(boot and level.boot_goggles)
 	if uncanny != null and is_instance_valid(uncanny):
 		uncanny.queue_free()
@@ -237,6 +241,52 @@ func set_view(s: int, force := false) -> void:
 		uncanny = Uncanny.new()
 		uncanny.setup(self, level.uncanny_cfg)
 		uncanny.add_tposers(int(level.uncanny_cfg.get("tposers", 0)))
+
+
+# ------------------------------------------------------------------ points and missions
+## Server (or offline): a photo was taken. It is worth how much it beats that operative's best
+## photo of that same brainrot (x1.5 if it was hunting at the time). Then the sector's rules.
+func photo_scored(pid: int, id: String, score: int, inst: int) -> void:
+	if inst >= 0 and inst < enemies.size() and is_instance_valid(enemies[inst]):
+		var best: Dictionary = _photo_best_off
+		if Net.active() and Net.players.has(pid):
+			if not Net.players[pid].has("photo_best"):
+				Net.players[pid].photo_best = {}
+			best = Net.players[pid].photo_best
+		var k = str(inst)
+		var gain = score - int(best.get(k, 0))
+		if gain > 0:
+			best[k] = score
+			if enemies[inst].is_threat():
+				gain = int(round(gain * 1.5))
+			award(pid, gain, "photo")
+	var lv = level_of(pid)
+	if lv and lv.has_method("on_request"):
+		lv.on_request(pid, "photo", [id, score, inst])
+
+
+## Server (or offline): give an operative points.
+func award(pid: int, pts: int, why: String) -> void:
+	if pts <= 0:
+		return
+	if Net.active():
+		Net.award(pid, pts, why)
+	else:
+		_points += pts
+		if hud:
+			hud.set_points(_points, pts, why)
+
+
+## A mission moved: refresh the list if it is the sector you are looking at.
+func missions_changed(lv) -> void:
+	if hud and lv == level:
+		hud.set_missions(Game.INFO.get(Game.LEVELS[lv.index], {}).get("title", ""), lv.missions)
+
+
+func my_points() -> int:
+	if Net.active() and Net.players.has(Net.my_id()):
+		return int(Net.players[Net.my_id()].get("points", 0))
+	return _points
 
 
 ## Dust around the player, the amount the sector wants.
@@ -488,7 +538,10 @@ func net_event(type: String, args: Array) -> void:
 		"sector":
 			var s: int = args[0]
 			if s >= 0 and s < levels.size():
-				levels[s].net_event(args[1], args[2])
+				if args[1] == "mission":
+					levels[s].apply_mission(args[2])
+				else:
+					levels[s].net_event(args[1], args[2])
 		"wave":
 			var s: int = args[0]
 			if s < levels.size() and not levels[s].wave_started:
@@ -503,6 +556,9 @@ func net_event(type: String, args: Array) -> void:
 			var d = doors.get(int(args[0]))
 			if d:
 				d.open()
+		"points":
+			if args[0] == me and hud:
+				hud.set_points(int(args[1]), int(args[2]), str(args[3]))
 		"revived":
 			var pid: int = args[0]
 			if pid == me and player:
@@ -518,18 +574,22 @@ func net_event(type: String, args: Array) -> void:
 
 
 func net_round_over(res: Array) -> void:
+	round_over = true
 	if hud:
 		var lines = PoolStringArray()
+		var team = 0
 		for r in res:
+			team += int(r[5]) if r.size() > 5 else 0
+			var pts = "%d pts · " % int(r[5]) if r.size() > 5 else ""
 			if r[0] == "next":
 				lines.append("\nnext: %s" % r[1])
 			elif r.size() > 4 and r[3] > 0:
-				lines.append("%s · %s · best photo %d (%s)" % [r[0], r[1], r[3], r[4]])
+				lines.append("%s · %s · %sbest photo %d (%s)" % [r[0], r[1], pts, r[3], r[4]])
 			else:
-				lines.append("%s · %s · no photo" % [r[0], r[1]])
+				lines.append("%s · %s · %sno photo" % [r[0], r[1], pts])
 		hud.show_stats(false)
 		hud.set_spectate("")
-		hud.death("round over", lines.join("\n") + "\n\n\nback to the lobby…")
+		hud.death("round over", lines.join("\n") + "\n\nteam · %d pts\n\nback to the lobby…" % team)
 		if player:
 			player.controls = false
 	get_tree().create_timer(7.0 if hud else 3.0).connect("timeout", Net, "back_to_lobby")
@@ -719,7 +779,9 @@ func door_use(door) -> void:
 		door.deny()       # it only opens from the side you leave through
 		return
 	if door.locked():
-		hud.subtitle("locked.   find the master key.", 2.5)
+		var n = levels[door.from_sector].missions_left()
+		hud.subtitle("locked.   %d mission%s left." % [n, "" if n == 1 else "s"], 2.5)
+		hud.flash_missions()
 		door.deny()
 		return
 	if door.want_open:
@@ -1043,6 +1105,8 @@ func _scare_frame(delta: float) -> void:
 
 
 func _death_screen(msg: String) -> void:
+	if round_over:
+		return            # the round ended meanwhile: the results stay on screen
 	if is_instance_valid(_rig):
 		_rig.queue_free()
 	hud.death("you became rot", msg)
@@ -1050,6 +1114,8 @@ func _death_screen(msg: String) -> void:
 
 
 func _death_hint(msg: String) -> void:
+	if round_over:
+		return
 	set_meta("can_skip", true)
 	var more = "the others are still inside." if Net.active() else "click to try again"
 	hud.death_small.text = (msg + "\n\n\n" + more).to_lower()

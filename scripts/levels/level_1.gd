@@ -9,6 +9,8 @@ const KeysAI := preload("res://scripts/enemies/keys.gd")
 var keys = []
 var master
 var key_holder = -1
+var _key_shots = {}       # enemy index -> photographed 75+
+var _stare = 0.0          # team seconds spent face to face with a key
 
 
 func build() -> void:
@@ -30,6 +32,10 @@ func build() -> void:
 	var far = _exit_cell(dist)
 	exit_z = _cell(far).z
 	_build_walls(om)
+	# the missions: the door stays shut until all three are done
+	add_mission("master", "take the master key", 1, "")
+	add_mission("keys", "photograph every key, 75+ each", 4)
+	add_mission("stare", "hold a key's gaze, closer than 2 m", 8, "secs")
 	var sp = _cell(start)
 	spawn_player(sp + Vector3(0, 0.2, 0), -PI * 0.5 if has_entry else -PI * 0.75)
 	_arrival(start)
@@ -206,10 +212,23 @@ func _physics_process(_delta: float) -> void:
 		if is_instance_valid(k) and k.is_threat():
 			threat = 0.45
 	danger_bonus = threat
-
-
-func exit_locked() -> bool:
-	return master != null and is_instance_valid(master) and not master.taken
+	# server: someone face to face with a frozen key, closer than 2 m, counts the seconds
+	if authority() and wave_started and _mission_index("stare") >= 0 and not missions[_mission_index("stare")].done:
+		var who = -1
+		for k in keys:
+			if not is_instance_valid(k) or k.master or k.taken or not k.observed:
+				continue
+			var kp: Vector3 = k.global_transform.origin
+			for t in world.targets(index):
+				if Vector2(t.pos.x - kp.x, t.pos.z - kp.z).length() < 2.0:
+					who = t.id
+			if who >= 0:
+				break
+		if who >= 0:
+			var before = int(_stare)
+			_stare += _delta
+			if int(_stare) != before:
+				mission_set("stare", float(int(_stare)), who)
 
 
 ## Shouting does nothing here. The keys don't care.
@@ -225,8 +244,14 @@ func _grab() -> void:
 
 
 ## Server: someone wants the master key. Only if they are actually next to it.
-func on_request(pid: int, type: String, _args: Array) -> void:
+func on_request(pid: int, type: String, args: Array) -> void:
 	if type == "photo":
+		# a good photo of a key counts it (every key, the master too)
+		if args.size() > 2 and float(args[1]) >= 75.0:
+			var inst = int(args[2])
+			if inst >= 0 and inst < world.enemies.size() and world.enemies[inst] in keys:
+				_key_shots[inst] = true
+				mission_set("keys", _key_shots.size(), pid)
 		# the flash holds every key in front of the lens for two seconds
 		var tp = world.target_by_id(pid)
 		if tp == null or not tp.has("fwd"):
@@ -244,6 +269,7 @@ func on_request(pid: int, type: String, _args: Array) -> void:
 	for k in keys:
 		k.enraged = true
 	_emit("key_taken", [pid])
+	mission_set("master", 1, pid)
 
 
 func net_event(type: String, args: Array) -> void:
@@ -259,7 +285,7 @@ func net_event(type: String, args: Array) -> void:
 			var hud = world.hud
 			if hud and here():
 				var who = "you" if args[0] == Net.my_id() or not Net.active() else Net.pname(args[0])
-				hud.subtitle("%s took the master key.   the exit is open.   run." % who, 4.0)
+				hud.subtitle("%s took the master key.   they are not patient anymore." % who, 4.0)
 				Audio.play("pickup", -2.0, 0.8)
 				Audio.play("ev_slam", -6.0, 0.7)
 		"shout":
