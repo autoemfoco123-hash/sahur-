@@ -7,6 +7,7 @@ var model_id = "keys"
 var cam: Camera
 var pivot: Spatial
 var angles = [0.0, 35.0, 90.0, 180.0]
+var arms = -99.0
 
 
 func _initialize() -> void:
@@ -15,6 +16,8 @@ func _initialize() -> void:
 			model_id = a.substr(6)
 		elif a.begins_with("out="):
 			out = a.substr(4)
+		elif a.begins_with("arms="):
+			arms = float(a.substr(5))
 
 
 func _setup() -> void:
@@ -33,6 +36,11 @@ func _setup() -> void:
 	var m = root.get_node("Game")  # autoloads are up
 	var model = load("res://scripts/brainrots.gd").build(model_id)
 	pivot.add_child(model)
+	if arms > -90.0:
+		for nm in ["armL", "armR"]:
+			var j = model.find_node(nm, true, false)
+			if j:
+				j.rotation.x = arms
 	var top = SpotLight.new()
 	top.light_energy = 3.0
 	top.spot_range = 8.0

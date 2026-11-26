@@ -35,6 +35,8 @@ var photo_score: Label
 var photo_name: Label
 var photo_grade: Label
 var evidence: Label
+var _bars = []
+var _cine_label: Label
 var missions_box: VBoxContainer
 var points_label: Label
 var points_pop: Label
@@ -618,6 +620,82 @@ func set_points(total: int, gain := 0, why := "") -> void:
 	var tw = create_tween()
 	tw.tween_interval(1.8)
 	tw.tween_property(points_pop, "modulate:a", 0.0, 0.8)
+
+
+## Cutscene framing: black bars slide in, the widgets step aside.
+func cinematic(on: bool) -> void:
+	if _bars.empty():
+		for top in [true, false]:
+			var b = ColorRect.new()
+			b.color = Color(0, 0, 0, 1)
+			b.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			b.anchor_right = 1.0
+			if top:
+				b.anchor_bottom = 0.0
+			else:
+				b.anchor_top = 1.0
+				b.anchor_bottom = 1.0
+			add_child(b)
+			_bars.append(b)
+	var vp = get_viewport().get_visible_rect().size
+	var h = vp.y * 0.11 if on else 0.0
+	var tw = create_tween().set_parallel(true)
+	tw.tween_property(_bars[0], "margin_bottom", h, 0.8)
+	tw.tween_property(_bars[1], "margin_top", -h, 0.8)
+	show_stats(not on)
+	missions_box.visible = not on
+	nv_root.modulate.a = 0.35 if on else 1.0
+
+
+## A line of the cutscene, in the bottom bar: who, then what they say.
+func cine_line(who: String, text: String) -> void:
+	if _cine_label == null:
+		_cine_label = UI.label("", 20, UI.WHITE, "light", Label.ALIGN_CENTER)
+		_cine_label.autowrap = true
+		_cine_label.valign = Label.VALIGN_CENTER
+		_cine_label.anchor_left = 0.08
+		_cine_label.anchor_right = 0.92
+		_cine_label.anchor_top = 0.89
+		_cine_label.anchor_bottom = 1.0
+		_cine_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_cine_label)
+	_cine_label.raise()
+	if text == "":
+		_cine_label.text = ""
+		return
+	_cine_label.text = ("%s   %s" % [who + ":" if who != "" else "", text]).to_lower()
+	_cine_label.modulate.a = 0.0
+	var tw = create_tween()
+	tw.tween_property(_cine_label, "modulate:a", 1.0, 0.25)
+
+
+## The world tears: jagged red cracks shoot across the screen from the middle, then fade.
+func crack_overlay() -> void:
+	var vp = get_viewport().get_visible_rect().size
+	var c = Control.new()
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	UI.full_rect(c)
+	add_child(c)
+	var r = RandomNumberGenerator.new()
+	r.randomize()
+	for k in 7:
+		var dir = Vector2(cos(k * TAU / 7.0 + r.randf_range(-0.3, 0.3)), sin(k * TAU / 7.0 + r.randf_range(-0.3, 0.3)))
+		var p = vp * 0.5 + Vector2(r.randf_range(-30, 30), r.randf_range(-20, 20))
+		var pts = PoolVector2Array([p])
+		while p.x > -50 and p.y > -50 and p.x < vp.x + 50 and p.y < vp.y + 50:
+			p += dir.rotated(r.randf_range(-0.6, 0.6)) * r.randf_range(26, 60)
+			pts.append(p)
+		for layer in [[7.0, Color(0.05, 0.0, 0.0, 0.9)], [2.5, Color(1.0, 0.25, 0.12, 1.0)]]:
+			var l = Line2D.new()
+			l.points = pts
+			l.width = layer[0]
+			l.default_color = layer[1]
+			l.joint_mode = Line2D.LINE_JOINT_SHARP
+			c.add_child(l)
+	var tw = create_tween()
+	tw.tween_interval(1.6)
+	tw.tween_property(c, "modulate:a", 0.0, 1.2)
+	tw.tween_callback(c, "queue_free")
 
 
 func set_spectate(t: String) -> void:

@@ -1,0 +1,23 @@
+[remap]
+
+importer="wav"
+type="AudioStreamSample"
+path="res://.import/khaby_servo.wav-d14c0434271a1c0cc5ec5742f008e3ae.sample"
+
+[deps]
+
+source_file="res://sounds/khaby_servo.wav"
+dest_files=[ "res://.import/khaby_servo.wav-d14c0434271a1c0cc5ec5742f008e3ae.sample" ]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=1

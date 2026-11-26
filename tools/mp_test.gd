@@ -190,6 +190,13 @@ func _event(act: String) -> void:
 			if is_instance_valid(c):
 				cs.append(str(c.center().round()))
 		print("[", pname, "] corpses: ", cs.join(" "), "  tung kill_t=%.2f" % w.levels[0].tung.kill_t)
+	elif act == "tokhaby":
+		var k = w.levels[2].khaby.global_transform.origin
+		w.player.global_transform.origin = k + Vector3(-3.5, 0.6, 0.8 if pname == "bravo" else -0.8)
+		var to = k + Vector3(0, 2.3, 0) - w.player.global_transform.origin
+		w.player.set_look(atan2(-to.x, -to.z), 0.1)
+	elif act == "talk":
+		w.levels[2]._talk()
 	elif act == "tomaster":
 		# right next to the master key, staring at it (watched, it can't run)
 		var lv = w.levels[1]
@@ -206,7 +213,7 @@ func _event(act: String) -> void:
 			ss += "%s:s%d:%s " % [p.name, int(p.get("sector", -1)), "out" if p.escaped else ("rot" if not p.alive else "in")]
 		for k in w.doors:
 			ss += " door%d=%.2f" % [k, w.doors[k].open_amt]
-		print("[", pname, "] where my_sector=%d view=%d pos=%s out=%s dying=%s greeter=%s wave1=%s calling=%s answered=%s players=%s" % [w.my_sector, w.view_sector, str(w.player.global_transform.origin.round()), str(w.my_out), str(w.dying), str(w._greeter != null), str(w.levels[1].wave_started), str(w.levels[0].calling), str(w.levels[0].answered), ss])
+		print("[", pname, "] where my_sector=%d view=%d pos=%s out=%s dying=%s greeter=%s wave1=%s scene=%.1f players=%s" % [w.my_sector, w.view_sector, str(w.player.global_transform.origin.round()), str(w.my_out), str(w.dying), str(w._greeter != null), str(w.levels[1].wave_started), w.levels[2].scene_t, ss])
 	elif act == "freeze":
 		for e in w.get_tree().get_nodes_in_group("hostile"):
 			e.frozen = true

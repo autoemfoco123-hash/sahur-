@@ -33,6 +33,8 @@ var has_entry = false       # a door from the previous sector in the west wall..
 var entry_z = 0.0           # ...at this world z
 var exit_z = 0.0            # world z of the exit door in the east wall
 var geo: Spatial            # this sector's static meshes
+var has_exit_door = true    # false: this sector ends some other way (world.gd builds no door)
+var ending_text = ""        # what you read when the run ends here
 var chalk = Color(0.9, 1.0, 0.9)   # colour of the hush marks on walls and floors
 var wall_blockers = []      # spots on walls taken by something (hotel doors): no writing there
 var missions = []           # [{id, text, goal, progress, done, fmt}] (team missions; the door opens when all are done)
@@ -46,6 +48,23 @@ func build() -> void:
 ## Ambience, footsteps, dust. `boot`: the very start of the run (goggles power up).
 func enter(_boot: bool) -> void:
 	pass
+
+
+## The goggles power up at the start of the run (whatever sector it starts in).
+func boot_goggles_now() -> void:
+	get_tree().create_timer(1.0).connect("timeout", self, "_boot_1")
+	get_tree().create_timer(2.4).connect("timeout", self, "_boot_2")
+
+
+func _boot_1() -> void:
+	world.hud.subtitle("hush nv-7 · booting…", 1.6)
+
+
+func _boot_2() -> void:
+	if not world.dying:
+		player().set_visor(true)
+		world.hud.fade(0.0, 0.5)
+		world.hud.subtitle("goggles locked · gyro calibrated · auto gain", 2.5)
 
 
 ## The first operative reached this sector (runs on every machine): wake it up.

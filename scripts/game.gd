@@ -1,10 +1,11 @@
 extends Node
 ## Global game state: settings, save data, level flow, input map. (Godot 3.6 / GLES2)
 
-const LEVELS := ["0", "1"]
+const LEVELS := ["0", "1", "2"]
 const INFO := {
 	"0": {"title": "sector 0", "name": "the sahur hallways", "goal": "the missions open the door.  photos are points (f).  answer when he calls (q)."},
 	"1": {"title": "sector 1", "name": "the key rooms", "goal": "the missions open the door.  photos are points (f).  they only move when nobody is looking."},
+	"2": {"title": "sector 2", "name": "bliss", "goal": "it is friendly.  do the missions, then talk to it (e)."},
 }
 
 var settings = {

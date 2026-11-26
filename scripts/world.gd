@@ -73,6 +73,8 @@ var _pending_revive = -1
 var round_over = false
 var corpses = []
 var _my_corpse = null
+var env_sector = -1       # whose light and haze you see (the view sector, or the bright one through a door)
+var _env_override = false # a level took over the look (the tear in sector 2)
 
 
 func _ready() -> void:
@@ -230,10 +232,13 @@ func set_view(s: int, force := false) -> void:
 	nav = level.nav
 	bake = level.get("bake")
 	_apply_quality()
+	_env_override = false
 	if boot or player == null:
 		setup_env(level.env_cfg)
-	else:
+	elif env_sector != s:
 		_blend_env(level.env_cfg, 1.2)
+	env_sector = s
+	_update_sun()
 	if player == null:
 		return
 	missions_changed(level)
@@ -301,6 +306,8 @@ func set_dust(amount: int) -> void:
 		if d.get_parent() == player:
 			d.remove_from_group("dust")
 			d.queue_free()
+	if amount <= 0:
+		return            # outdoors: clean air
 	var p = Geo.dust(player, amount)
 	var q = int(clamp(int(Game.settings.gfx), 0, 2))
 	p.emitting = q >= 1
@@ -315,8 +322,7 @@ func _local_shout() -> void:
 
 
 func setup_env(c: Dictionary) -> void:
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = c.get("bg", Color(0, 0, 0))
+	_set_background(c)
 	env.ambient_light_color = c.get("ambient", Color(0.35, 0.3, 0.28))
 	env.ambient_light_energy = c.get("ambient_energy", 0.3)
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
@@ -664,6 +670,7 @@ func _process(delta: float) -> void:
 	if level == null or player == null:
 		return
 	set_view(sector_at(player.cam.global_transform.origin))
+	_update_env_sector()
 	if not my_out and not dying and not completing:
 		var ps = sector_at(player.global_transform.origin)
 		if ps > my_sector:
@@ -785,6 +792,8 @@ func flash(x := 1.0) -> void:
 func _build_doors() -> void:
 	for i in levels.size():
 		var lv = levels[i]
+		if not lv.has_exit_door:
+			continue          # this sector ends some other way
 		var last = i == levels.size() - 1
 		var x = lv.origin.x + lv.extent.x + (0.0 if last else WALL_T * 0.5)
 		var d = SlideDoor.new()
@@ -956,8 +965,76 @@ func _greeter_frame(delta: float) -> void:
 		_greeter_gone = 0.0
 
 
+## A sector's background: its own sky (an equirectangular panorama) or a flat colour.
+func _set_background(c: Dictionary) -> void:
+	if c.has("sky") and not headless:
+		var key = "sky_" + str(c.sky)
+		if not Game.cache.has(key):
+			var ps = PanoramaSky.new()
+			ps.panorama = load(c.sky)
+			ps.radiance_size = Sky.RADIANCE_SIZE_32
+			Game.cache[key] = ps
+		env.background_mode = Environment.BG_SKY
+		env.background_sky = Game.cache[key]
+		env.ambient_light_sky_contribution = c.get("sky_contribution", 0.5)
+	else:
+		env.background_mode = Environment.BG_COLOR
+		env.background_color = c.get("bg", Color(0, 0, 0))
+		env.ambient_light_sky_contribution = 0.0
+
+
+## A level takes over the look for a moment (it stays until the view changes sector).
+func override_env(c: Dictionary, dur: float) -> void:
+	_env_override = true
+	_blend_env(c, dur)
+
+
+## Light and haze follow what you look into: at an open door onto a sector with a sky, you
+## already stand in its daylight. (Indoors to indoors, each side keeps its own.)
+func _update_env_sector() -> void:
+	if _env_override or player == null:
+		return
+	var es = view_sector
+	var cam: Vector3 = player.cam.global_transform.origin
+	var fwd: Vector3 = -player.cam.global_transform.basis.z
+	for k in [view_sector, view_sector - 1]:
+		var d = doors.get(k)
+		if d == null or d.open_amt < 0.15:
+			continue
+		var other = d.to_sector if d.from_sector == view_sector else d.from_sector
+		if other < 0 or other >= levels.size() or not levels[other].env_cfg.has("sky") or level.env_cfg.has("sky"):
+			continue
+		var to = d.global_transform.origin + Vector3(0, 1.2, 0) - cam
+		if to.length() < 7.0 and fwd.dot(to.normalized()) > 0.35:
+			es = other
+	if es != env_sector:
+		env_sector = es
+		_blend_env(levels[es].env_cfg, 0.7)
+		_update_sun()
+
+
+## Outdoor sectors bring their sun; it only shines while you see that sector.
+func _update_sun() -> void:
+	var q = int(clamp(int(Game.settings.gfx), 0, 2))
+	for lv in levels:
+		var sun = lv.get("sun")
+		if sun:
+			sun.visible = lv.index == env_sector
+			sun.shadow_enabled = q >= 2
+
+
+## Cutscene framing: black bars, no widgets.
+func cinematic(on: bool) -> void:
+	if hud:
+		hud.cinematic(on)
+	if player:
+		player.controls = not on
+		player.look_enabled = not on
+
+
 ## Moving between sectors: the haze, the light and the tint drift over instead of snapping.
 func _blend_env(c: Dictionary, dur: float) -> void:
+	_set_background(c)
 	var tw = create_tween().set_parallel(true).set_trans(Tween.TRANS_SINE)
 	tw.tween_property(env, "ambient_light_color", c.get("ambient", Color(0.35, 0.3, 0.28)), dur)
 	tw.tween_property(env, "ambient_light_energy", c.get("ambient_energy", 0.3), dur)
@@ -1245,7 +1322,10 @@ func _ending() -> void:
 	hud.show_stats(false)
 	if not Net.active():
 		Audio.stop_ambient(2.0)
-	hud.death("you made it out", "for now.\n\nhush thanks you, operative.\nhe will call again tomorrow, at 3 am.", UI.WHITE)
+	var txt = "for now.\n\nhush thanks you, operative.\nhe will call again tomorrow, at 3 am."
+	if my_sector < levels.size() and levels[my_sector].ending_text != "":
+		txt = levels[my_sector].ending_text
+	hud.death("you made it out", txt, UI.WHITE)
 
 
 func _to_menu() -> void:

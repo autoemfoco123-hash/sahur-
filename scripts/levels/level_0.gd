@@ -280,17 +280,6 @@ func _tung_spawn(dist: Dictionary, far: Vector2, sp: Vector3) -> Vector3:
 	return tp
 
 
-func _boot_1() -> void:
-	world.hud.subtitle("hush nv-7 · booting…", 1.6)
-
-
-func _boot_2() -> void:
-	if not world.dying:
-		player().set_visor(true)
-		world.hud.fade(0.0, 0.5)
-		world.hud.subtitle("goggles locked · gyro calibrated · auto gain", 2.5)
-
-
 # ------------------------------------------------------------------ layout
 func _cell(c: Vector2, y := 0.0) -> Vector3:
 	return origin + Vector3((c.x + 0.5) * C, y, (c.y + 0.5) * C)

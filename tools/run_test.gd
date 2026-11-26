@@ -182,6 +182,21 @@ func _event(act: String) -> void:
 		set_meta("killer", w.enemies.find(killer))
 	elif act == "dokill":
 		w._death_show(get_meta("victim"), get_meta("killer"))
+	elif act.begins_with("tokhaby"):
+		# stand in front of the mechanism, looking at its face (tokhaby3 = 3 m away)
+		var lv = w.levels[2]
+		var k = lv.khaby.global_transform.origin
+		var dist = float(act.substr(7)) if act.length() > 7 else 4.0
+		var at = k + Vector3(-dist, 0.3, 0)
+		w.player.global_transform.origin = at
+		var to = k + Vector3(0, 2.35, 0) - (at + Vector3(0, 1.6, 0))
+		w.player.set_look(atan2(-to.x, -to.z), atan2(to.y, Vector2(to.x, to.z).length()))
+	elif act == "talk":
+		w.levels[2]._talk()
+	elif act.begins_with("look"):
+		# look: yaw degrees , pitch degrees  e.g. look30_10
+		var parts = act.substr(4).split("_")
+		w.player.set_look(deg2rad(float(parts[0])), deg2rad(float(parts[1])) if parts.size() > 1 else 0.0)
 	elif act == "grabmaster":
 		var lv = w.levels[1]
 		w.player.global_transform.origin = lv.master.global_transform.origin + Vector3(1.4, 0.1, 0)

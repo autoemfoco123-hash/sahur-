@@ -26,6 +26,7 @@ var chase_sound = ""
 var chase_player: AudioStreamPlayer3D
 var aggro_target = 0.0
 var aggro = 0.0
+var pinned = false          # held where it is (no gravity, no moving), still animated
 var kill_t = -1.0           # seconds into the kill animation (-1: not killing)
 var kill_at = Vector3.ZERO  # where the victim stands
 var kill_hit = 0.42         # when the blow lands (the body flies then)
@@ -120,6 +121,9 @@ func _physics_process(delta: float) -> void:
 		face_dir(to, delta, 14.0)
 		if kill_t > kill_len:
 			kill_t = -1.0
+	if pinned:
+		_animate(delta, 0.0)
+		return
 	if puppet:
 		_puppet_step(delta)
 		return
