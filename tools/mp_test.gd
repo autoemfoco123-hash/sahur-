@@ -117,6 +117,30 @@ func _event(act: String) -> void:
 		walk_t = 40
 	elif act == "die":
 		Game_kill(w)
+	elif act == "door":
+		# walk up to the exit of the sector you are in and open it
+		var lv = w.levels[w.my_sector]
+		var d: Spatial = lv.exit_root
+		var front: Vector3 = d.global_transform.xform(Vector3(0, 0, 1.5))
+		w.player.global_transform.origin = front + Vector3(0, 0.1, 0)
+		var to = d.global_transform.origin - front
+		w.player.set_look(atan2(-to.x, -to.z), 0.0)
+		w.use_exit(lv, d)
+	elif act == "tomaster":
+		# right next to the master key, staring at it (watched, it can't run)
+		var lv = w.levels[1]
+		var m = lv.master.global_transform.origin
+		w.player.global_transform.origin = m + Vector3(1.4, 0.1, 0)
+		var to = m - w.player.global_transform.origin
+		w.player.set_look(atan2(-to.x, -to.z), -0.1)
+	elif act == "grab":
+		w.levels[1]._grab()
+	elif act == "where":
+		var ss = ""
+		for pid in net.players:
+			var p = net.players[pid]
+			ss += "%s:s%d:%s " % [p.name, int(p.get("sector", -1)), "out" if p.escaped else ("rot" if not p.alive else "in")]
+		print("[", pname, "] where my_sector=%d view=%d pos=%s out=%s dying=%s transit=%s wave1=%s calling=%s answered=%s players=%s" % [w.my_sector, w.view_sector, str(w.player.global_transform.origin.round()), str(w.my_out), str(w.dying), str(w._transit), str(w.levels[1].wave_started), str(w.levels[0].calling), str(w.levels[0].answered), ss])
 	elif act == "freeze":
 		for e in w.get_tree().get_nodes_in_group("hostile"):
 			e.frozen = true

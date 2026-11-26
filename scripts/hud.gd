@@ -510,7 +510,7 @@ func _process(delta: float) -> void:
 		var lines = PoolStringArray()
 		for pid in Net.round_ids():
 			var p = Net.players[pid]
-			var st = "out" if p.escaped else ("rot" if not p.alive else "inside")
+			var st = "out" if p.escaped else ("rot" if not p.alive else "sector %d" % int(p.get("sector", 0)))
 			lines.append("%s · %s" % [p.name, st])
 		roster.text = lines.join("\n")
 	var c = Game.brain_cells

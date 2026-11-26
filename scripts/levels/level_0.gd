@@ -28,27 +28,22 @@ var pillar_ratio = 0.45   # free-standing pillars at empty corners
 
 
 func build() -> void:
-	world.setup_env({
+	env({
 		"ambient": Color(0.92, 0.88, 0.62), "ambient_energy": 0.62 if Mats.potato() else 0.42,
 		"fog_color": Color(0.62, 0.6, 0.42), "fog_begin": 6.0 if Mats.potato() else 8.0, "fog_end": 34.0 if Mats.potato() else 60.0, "fog_curve": 1.4 if Mats.potato() else 1.7,
 		"tint": Vector3(1.03, 1.0, 0.86), "contrast": 1.05, "saturation": 1.0,
 	})
 	boot_goggles = true
-	ambient("amb_hall", -9.0, "amb_heavy", -11.0)
-	Audio.set_reverb(0.75, 0.28)
-	if player():
-		player().step_sound = "step_grass"
-		player().step_volume = -16.0
-		Geo.dust(player(), 500)
+	greeter = "tung"
 	var size = Vector2(CW * C, CH * C)
 	make_nav(Vector2(-1, -1), size + Vector2(1, 1), 0.5)
-	world.nav.margin = 0.3
+	nav.margin = 0.3
 	# One collider each for floor and ceiling; what you see is the merged, light-baked office mesh.
-	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), Vector3(size.x * 0.5, -0.2, size.y * 0.5), null, null, false)
-	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), Vector3(size.x * 0.5, H + 0.2, size.y * 0.5), null, null, false)
+	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), origin + Vector3(size.x * 0.5, -0.2, size.y * 0.5), null, null, false)
+	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), origin + Vector3(size.x * 0.5, H + 0.2, size.y * 0.5), null, null, false)
 	var om = OfficeMesh.new()
-	om.plane("floor", Vector2(-0.2, -0.2), size + Vector2(0.4, 0.4), 0.0, true)
-	om.plane("ceiling", Vector2(-0.2, -0.2), size + Vector2(0.4, 0.4), H, false)
+	om.plane("floor", o2() + Vector2(-0.2, -0.2), o2() + size + Vector2(0.4, 0.4), 0.0, true)
+	om.plane("ceiling", o2() + Vector2(-0.2, -0.2), o2() + size + Vector2(0.4, 0.4), H, false)
 	_layout()
 	_build_walls(om)
 	var start = Vector2(0, 0)
@@ -74,7 +69,8 @@ func build() -> void:
 	var back: Vector2 = par.get(far, far)
 	var dirv = Vector3(back.x - far.x, 0, back.y - far.y)
 	var exit_at = _cell(far) - dirv * 1.2
-	Geo.exit_door(world, exit_at, atan2(dirv.x, dirv.z), world, "_on_exit_body", Color(1.0, 0.97, 0.88), "exit")
+	# the way on: it opens straight into the key rooms
+	make_exit(exit_at, atan2(dirv.x, dirv.z), Color(1.0, 0.72, 0.42))
 	if world.headless:
 		# dedicated server: collision, navigation and rules only, nothing to draw
 		spawn_player(_cell(start) + Vector3(0, 0.2, 0), -PI * 0.75)
@@ -83,7 +79,6 @@ func build() -> void:
 	# Bake the light once (GPU, 2D soft shadows + bounce + occlusion), then build the meshes
 	bake = LightBake.new()
 	world.add_child(bake)
-	world.bake = bake
 	var walls2d = []
 	for sgm in _wall_list:
 		walls2d.append([Vector2(sgm[0].x, sgm[0].z), Vector2(sgm[1].x, sgm[1].z)])
@@ -92,7 +87,7 @@ func build() -> void:
 		lxz.append(Vector2(lp.x, lp.z))
 	var eg = exit_at + dirv * 0.9
 	lxz.append(Vector2(eg.x, eg.z))
-	bake.build(Rect2(-1.6, -1.6, size.x + 3.2, size.y + 3.2), lxz, walls2d)
+	bake.build(Rect2(o2() + Vector2(-1.6, -1.6), size + Vector2(3.2, 3.2)), lxz, walls2d)
 	om.commit(world, bake.office_mats(H, world.env))
 	for lp in lamp_pos:
 		lights.append(Geo.lamp_light(world, lp, bake, rng.randf_range(1.5, 1.9)))
@@ -107,8 +102,6 @@ func build() -> void:
 		note(pts[1], "hush · incident log · operative 01\n\noperative 01 pried his goggles off at 03:00:41.\nthe feed shows him standing still for six hours.\nsmiling.\n\nthe goggles kept recording on the floor.\nthe last frame is a wooden face.\n\n(operative 01 was not recovered)")
 	# Tung
 	tung = enemy(TungAI, "tung", _tung_spawn(dist, far, sp) + Vector3(0, 0.1, 0))
-	if player():
-		player().connect("shouted", self, "_local_shout")
 	# hush chalk on the carpet: arrows to the exit
 	var path = [far]
 	while path[-1] != start and par.has(path[-1]):
@@ -123,13 +116,25 @@ func build() -> void:
 	for c in path:
 		demo_path.append(_cell(c))
 	_wall_writing(["he is listening", "answer once", "don't look up", "we watched. we did nothing", "03 you are not the first", "behind you"])
+	# scares are personal: every operative gets their own (world.gd makes them on entering)
+	uncanny_cfg = {"lights": lights, "watcher_ids": ["tung"], "max_watchers": 2, "tposers": 1}
+
+
+func enter(boot: bool) -> void:
+	ambient("amb_hall", -9.0, "amb_heavy", -11.0)
+	Audio.set_reverb(0.75, 0.28)
 	if player():
-		# scares are personal: every operative gets their own
-		world.uncanny = Uncanny.new()
-		world.uncanny.setup(world, {"lights": lights, "watcher_ids": ["tung"], "max_watchers": 2})
-		world.uncanny.add_tposers(1)
+		player().step_sound = "step_grass"
+		player().step_volume = -16.0
+		world.set_dust(500)
+	if boot:
 		get_tree().create_timer(1.0).connect("timeout", self, "_boot_1")
 		get_tree().create_timer(2.4).connect("timeout", self, "_boot_2")
+
+
+func start_wave() -> void:
+	.start_wave()
+	call_timer = 14.0
 
 
 ## Tung starts halfway down the maze, far from the operatives.
@@ -159,7 +164,7 @@ func _boot_2() -> void:
 
 # ------------------------------------------------------------------ layout
 func _cell(c: Vector2, y := 0.0) -> Vector3:
-	return Vector3((c.x + 0.5) * C, y, (c.y + 0.5) * C)
+	return origin + Vector3((c.x + 0.5) * C, y, (c.y + 0.5) * C)
 
 
 func _layout() -> void:
@@ -244,6 +249,7 @@ func _build_walls(om) -> void:
 			if not touching and rng.randf() < pillar_ratio:
 				segs.append([Vector3(x * C, H * 0.5, y * C), Vector3(0.95, H, 0.95)])
 	for sgm in segs:
+		sgm[0] += origin
 		var pos: Vector3 = sgm[0]
 		var sz: Vector3 = sgm[1]
 		var cs = CollisionShape.new()
@@ -252,7 +258,7 @@ func _build_walls(om) -> void:
 		cs.shape = sh
 		sb.add_child(cs)
 		cs.translation = pos
-		world.nav.block_box(pos, sz)
+		nav.block_box(pos, sz)
 		om.box_sides("wall", pos, sz)
 		_wall_list.append(sgm)
 
@@ -273,7 +279,8 @@ func _wall_writing(lines: Array) -> void:
 			normal = -normal
 		var at = pos + normal * (min(sz.x, sz.z) * 0.5 + 0.02)
 		at.y = 1.55
-		if at.x < 0.5 or at.z < 0.5 or at.x > CW * C - 0.5 or at.z > CH * C - 0.5:
+		var rel = at - origin
+		if rel.x < 0.5 or rel.z < 0.5 or rel.x > CW * C - 0.5 or rel.z > CH * C - 0.5:
 			continue
 		ir_mark(at, atan2(normal.x, normal.z), lines[placed], 64)
 		placed += 1
@@ -287,12 +294,12 @@ func _physics_process(delta: float) -> void:
 	if tung == null or not is_instance_valid(tung):
 		return
 	# A tube somewhere stutters, then catches again (each operative sees their own).
-	if world.player and randf() < 0.02 and lights.size() > 0:
+	if here() and randf() < 0.02 and lights.size() > 0:
 		var l: SpotLight = lights[randi() % lights.size()]
 		Geo.lamp_set_on(l, false)
 		get_tree().create_timer(rand_range(0.04, 0.25)).connect("timeout", self, "_relight", [l])
 	danger_bonus = 0.55 if tung.is_threat() else (0.25 if calling and not answered else 0.0)
-	if not authority() or world.targets().empty():
+	if not authority() or not wave_started or world.targets(index).empty():
 		return
 	if not calling:
 		call_timer -= delta
@@ -310,7 +317,7 @@ func _physics_process(delta: float) -> void:
 			call_timer = rng.randf_range(20.0, 30.0)
 			if not answered:
 				# "he is coming for the quiet one": somebody who stayed quiet
-				var ts = world.targets()
+				var ts = world.targets(index)
 				tung.hunt_id = ts[randi() % ts.size()].id
 				_emit("unanswered", [tung.hunt_id])
 				tung.set_state(TungAI.S.HUNT)
@@ -318,16 +325,17 @@ func _physics_process(delta: float) -> void:
 			_emit("call_end", [])
 
 
+## Sector events go to the same sector on every machine.
 func _emit(type: String, args: Array) -> void:
 	if Net.active():
-		Net.event(type, args)
+		Net.event("sector", [index, type, args])
 	else:
 		net_event(type, args)
 
 
-## Runs on every machine (server included).
+## Runs on every machine (server included). Only operatives looking at this sector see the text.
 func net_event(type: String, args: Array) -> void:
-	var hud = world.hud
+	var hud = world.hud if here() else null
 	match type:
 		"call_start":
 			calling = true
@@ -362,7 +370,7 @@ func _relight(l: SpotLight) -> void:
 
 
 func _knock_fx(k: int) -> void:
-	if world.hud == null:
+	if world.hud == null or not here():
 		return
 	for i in 3:
 		get_tree().create_timer(i * 0.32).connect("timeout", self, "_knock_hit")
@@ -379,14 +387,6 @@ func _knock_voice() -> void:
 	if not answered:
 		Audio.play_at("sahur_low", tung.global_transform.origin + Vector3(0, 2, 0), world, 6.0, 1.0, 200.0)
 		Audio.play("sahur_low", -14.0)
-
-
-## The local operative shouted "sahur!" (the server decides what it means).
-func _local_shout() -> void:
-	if Net.active():
-		Net.request("shout")
-	else:
-		on_shout(1)
 
 
 ## Server: requests from operatives. A flash in his face wakes him up.

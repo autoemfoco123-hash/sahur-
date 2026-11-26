@@ -15,6 +15,8 @@ func _initialize() -> void:
 			frames = int(a.split("=")[1])
 		elif a.begins_with("scene="):
 			scene = a.split("=")[1]
+		elif a == "menu":
+			scene = "res://scenes/menu.tscn"
 		elif a.begins_with("out="):
 			out = a.split("=")[1]
 		elif a.begins_with("at="):
@@ -29,6 +31,8 @@ func _idle(_d: float) -> bool:
 		for a in OS.get_cmdline_args():
 			if a.begins_with("level="):
 				root.get_node("Game").current_level = a.substr(6)
+			if a.begins_with("seed="):
+				root.get_node("Game").forced_seed = int(a.substr(5))
 		if "headless" in OS.get_cmdline_args():
 			root.get_node("Net").dedicated = true
 		if "fakeserver" in OS.get_cmdline_args():
@@ -65,6 +69,12 @@ func _event(act: String) -> void:
 	print("event ", n, " ", act, " world=", w != null)
 	if act.begins_with("shot:"):
 		_shot(act.substr(5))
+	elif act == "hostmenu":
+		var m = root.get_tree().current_scene
+		for n in [m] + m.get_children():
+			if n.has_method("_do_host"):
+				n._do_host()
+				break
 	elif w == null:
 		return
 	elif act == "kill":
@@ -95,6 +105,26 @@ func _event(act: String) -> void:
 			e.global_transform.origin = pl.global_transform.origin + f * 3.2
 			e.look_at(pl.global_transform.origin, Vector3.UP)
 			e.rotation.x = 0
+	elif act.begins_with("door"):
+		# stand in front of a sector's exit door and open it (door = sector 0, door1 = sector 1)
+		var si = int(act.substr(4)) if act.length() > 4 else 0
+		var lv = w.levels[si]
+		var d: Spatial = lv.exit_root
+		var front: Vector3 = d.global_transform.xform(Vector3(0, 0, 1.5))
+		w.player.global_transform.origin = front + Vector3(0, 0.1, 0)
+		var to = d.global_transform.origin - front
+		w.player.set_look(atan2(-to.x, -to.z), 0.0)
+		print("door %d at %s locked=%s" % [si, str(d.global_transform.origin), str(lv.has_method("exit_locked") and lv.exit_locked())])
+	elif act.begins_with("xopen"):
+		var si = int(act.substr(5)) if act.length() > 5 else 0
+		w.use_exit(w.levels[si], w.levels[si].exit_root)
+	elif act == "where":
+		var pp = w.player.global_transform.origin if w.player else Vector3.ZERO
+		print("where: my_sector=%d view=%d level=%d pos=%s transit=%s greeter=%s fade=%.2f out=%s dying=%s completing=%s" % [w.my_sector, w.view_sector, w.level.index, str(pp), str(w._transit), str(w._greeter != null), w.hud.fade_rect.color.a if w.hud else -1.0, str(w.my_out), str(w.dying), str(w.completing)])
+	elif act == "grabmaster":
+		var lv = w.levels[1]
+		w.player.global_transform.origin = lv.master.global_transform.origin + Vector3(1.4, 0.1, 0)
+		lv._grab()
 	elif act.begins_with("op"):
 		# an operative 2.4 m in front of the camera, facing it (args: op or opwalk)
 		var pl = w.player

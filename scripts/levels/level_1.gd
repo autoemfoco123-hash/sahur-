@@ -12,28 +12,23 @@ var key_holder = -1
 
 
 func build() -> void:
-	world.setup_env({
+	env({
 		"ambient": Color(0.95, 0.72, 0.5), "ambient_energy": 0.5 if Mats.potato() else 0.36,
 		"fog_color": Color(0.11, 0.075, 0.05), "fog_begin": 4.0 if Mats.potato() else 5.0, "fog_end": 30.0 if Mats.potato() else 44.0, "fog_curve": 1.5,
 		"tint": Vector3(1.05, 0.98, 0.86), "contrast": 1.08, "saturation": 1.0,
 	})
 	boot_goggles = true
-	ambient("amb_keys", -5.0, "amb_heavy", -16.0)
-	Audio.set_reverb(0.5, 0.2)
-	if player():
-		player().step_sound = "step_grass"
-		player().step_volume = -18.0
-		Geo.dust(player(), 350)
+	greeter = "keys"
 	open_ratio = 0.22
 	pillar_ratio = 0.0
 	var size = Vector2(CW * C, CH * C)
 	make_nav(Vector2(-1, -1), size + Vector2(1, 1), 0.5)
-	world.nav.margin = 0.3
-	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), Vector3(size.x * 0.5, -0.2, size.y * 0.5), null, null, false)
-	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), Vector3(size.x * 0.5, H + 0.2, size.y * 0.5), null, null, false)
+	nav.margin = 0.3
+	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), origin + Vector3(size.x * 0.5, -0.2, size.y * 0.5), null, null, false)
+	Geo.solid(world, Vector3(size.x + 2, 0.4, size.y + 2), origin + Vector3(size.x * 0.5, H + 0.2, size.y * 0.5), null, null, false)
 	var om = OfficeMesh.new()
-	om.plane("floor", Vector2(-0.2, -0.2), size + Vector2(0.4, 0.4), 0.0, true)
-	om.plane("ceiling", Vector2(-0.2, -0.2), size + Vector2(0.4, 0.4), H, false)
+	om.plane("floor", o2() + Vector2(-0.2, -0.2), o2() + size + Vector2(0.4, 0.4), 0.0, true)
+	om.plane("ceiling", o2() + Vector2(-0.2, -0.2), o2() + size + Vector2(0.4, 0.4), H, false)
 	_layout()
 	_build_walls(om)
 	var start = Vector2(0, 0)
@@ -46,12 +41,16 @@ func build() -> void:
 			far = c
 	var sp = _cell(start)
 	spawn_player(sp + Vector3(0, 0.2, 0), -PI * 0.75)
-	# the keys (decided before anything visual touches the rng, so every machine agrees)
+	# through the door from the sector before: your back to a hotel door, facing the floor
+	arrive_pos = origin + Vector3(C * 0.5, 0.2, 0.75)
+	arrive_yaw = PI
+	# the keys (decided before anything visual touches the rng, so every machine agrees).
+	# They sleep until the first operative comes through the door (start_wave).
 	var spots = _key_spots(dist, sp, 4)
 	for i in spots.size():
 		var k = enemy(KeysAI, "keys", spots[i] + Vector3(0, 0.05, 0))
 		k.rotation.y = rng.randf_range(-PI, PI)
-		k.dormant = 9.0 + i * 1.5
+		k.dormant = 1e9
 		keys.append(k)
 	master = keys[0]
 	master.make_master()
@@ -59,7 +58,7 @@ func build() -> void:
 	var back: Vector2 = par.get(far, far)
 	var dirv = Vector3(back.x - far.x, 0, back.y - far.y)
 	var exit_at = _cell(far) - dirv * 1.2
-	Geo.exit_door(world, exit_at, atan2(dirv.x, dirv.z), world, "_on_exit_body", Color(1.0, 0.62, 0.32), "exit")
+	make_exit(exit_at, atan2(dirv.x, dirv.z), Color(0.85, 0.92, 1.0))
 	if world.headless:
 		return
 	if player():
@@ -77,9 +76,10 @@ func build() -> void:
 			lamp_pos.append(lp)
 			om.panel(lp)
 	_place_doors(om)
+	# the door you came through: shut behind you, and it stays shut
+	_hotel_door(om, Vector3(origin.x + C * 0.5, 0.0, origin.z + T * 0.5), Vector3(0, 0, 1), Vector3(1, 0, 0), 0.92)
 	bake = LightBake.new()
 	world.add_child(bake)
-	world.bake = bake
 	var walls2d = []
 	for sgm in _wall_list:
 		walls2d.append([Vector2(sgm[0].x, sgm[0].z), Vector2(sgm[1].x, sgm[1].z)])
@@ -88,7 +88,7 @@ func build() -> void:
 		lxz.append(Vector2(lp.x, lp.z))
 	var eg = exit_at + dirv * 0.9
 	lxz.append(Vector2(eg.x, eg.z))
-	bake.build(Rect2(-1.6, -1.6, size.x + 3.2, size.y + 3.2), lxz, walls2d, 0.85)
+	bake.build(Rect2(o2() + Vector2(-1.6, -1.6), size + Vector2(3.2, 3.2)), lxz, walls2d, 0.85)
 	om.commit(world, bake.office_mats(H, world.env, {
 		"tex": {"floor": ["carpet_red", 1.0], "wall": ["wallpaper_green", 1.0], "ceiling": ["plaster", 2.0],
 			"panel": ["lamp_round", 0.6], "door": ["wood", 1.0], "knob": ["brass", 0.3]},
@@ -116,11 +116,27 @@ func build() -> void:
 	for c in path:
 		demo_path.append(_cell(c))
 	_wall_writing(["don't blink", "it was right there", "keep looking", "the master key runs", "03 the doors are not doors", "behind you"])
+	uncanny_cfg = {"lights": lights, "watcher_ids": ["keys"], "max_watchers": 2}
+
+
+func enter(boot: bool) -> void:
+	ambient("amb_keys", -5.0, "amb_heavy", -16.0)
+	Audio.set_reverb(0.5, 0.2)
 	if player():
-		world.uncanny = Uncanny.new()
-		world.uncanny.setup(world, {"lights": lights, "watcher_ids": ["keys"], "max_watchers": 2})
+		player().step_sound = "step_grass"
+		player().step_volume = -18.0
+		world.set_dust(350)
+	if boot:
 		get_tree().create_timer(1.0).connect("timeout", self, "_boot_1")
 		get_tree().create_timer(2.4).connect("timeout", self, "_boot_2")
+
+
+## Somebody came through the door: the keys wake up, one after another.
+func start_wave() -> void:
+	wave_started = true
+	for i in keys.size():
+		if is_instance_valid(keys[i]):
+			keys[i].dormant = 9.0 + i * 1.5
 
 
 func killer_id() -> String:
@@ -170,16 +186,23 @@ func _place_doors(om) -> void:
 			var off = rng.randf_range(-length * 0.5 + 0.9, length * 0.5 - 0.9)
 			var face = pos + n * (T * 0.5) + t * off
 			face.y = 0.0
-			if face.x < 0.3 or face.z < 0.3 or face.x > CW * C - 0.3 or face.z > CH * C - 0.3:
+			var rel = face - origin
+			if rel.x < 0.3 or rel.z < 0.3 or rel.x > CW * C - 0.3 or rel.z > CH * C - 0.3:
 				continue
-			var w = 0.92
-			om.box_sides("door", face + n * 0.025 + Vector3(0, 1.04, 0), _sz(t, n, w, 2.08, 0.05))
-			for s2 in [-1.0, 1.0]:
-				om.box_sides("door", face + n * 0.035 + t * (w * 0.5 + 0.035) * s2 + Vector3(0, 1.08, 0), _sz(t, n, 0.07, 2.16, 0.07))
-			om.box_sides("door", face + n * 0.035 + Vector3(0, 2.15, 0), _sz(t, n, w + 0.14, 0.07, 0.07))
-			om.box_sides("knob", face + n * 0.08 + t * (w * 0.5 - 0.1) + Vector3(0, 1.0, 0), _sz(t, n, 0.06, 0.06, 0.06))
-			om.box_sides("knob", face + n * 0.055 + t * (w * 0.5 - 0.1) + Vector3(0, 0.9, 0), _sz(t, n, 0.04, 0.11, 0.012))
-			om.box_sides("knob", face + n * 0.055 + Vector3(0, 1.6, 0), _sz(t, n, 0.13, 0.07, 0.012))
+			if rel.z < 1.0 and rel.x < C:
+				continue      # the arrival door has this spot
+			_hotel_door(om, face, n, t, 0.92)
+
+
+## One locked hotel door on a wall face: slab, frame, brass knob, room plate.
+func _hotel_door(om, face: Vector3, n: Vector3, t: Vector3, w: float) -> void:
+	om.box_sides("door", face + n * 0.025 + Vector3(0, 1.04, 0), _sz(t, n, w, 2.08, 0.05))
+	for s2 in [-1.0, 1.0]:
+		om.box_sides("door", face + n * 0.035 + t * (w * 0.5 + 0.035) * s2 + Vector3(0, 1.08, 0), _sz(t, n, 0.07, 2.16, 0.07))
+	om.box_sides("door", face + n * 0.035 + Vector3(0, 2.15, 0), _sz(t, n, w + 0.14, 0.07, 0.07))
+	om.box_sides("knob", face + n * 0.08 + t * (w * 0.5 - 0.1) + Vector3(0, 1.0, 0), _sz(t, n, 0.06, 0.06, 0.06))
+	om.box_sides("knob", face + n * 0.055 + t * (w * 0.5 - 0.1) + Vector3(0, 0.9, 0), _sz(t, n, 0.04, 0.11, 0.012))
+	om.box_sides("knob", face + n * 0.055 + Vector3(0, 1.6, 0), _sz(t, n, 0.13, 0.07, 0.012))
 
 
 func _sz(t: Vector3, n: Vector3, w: float, h: float, d: float) -> Vector3:
@@ -190,7 +213,7 @@ func _sz(t: Vector3, n: Vector3, w: float, h: float, d: float) -> Vector3:
 
 # ------------------------------------------------------------------ rules
 func _physics_process(_delta: float) -> void:
-	if world.player and randf() < 0.015 and lights.size() > 0:
+	if here() and randf() < 0.015 and lights.size() > 0:
 		var l: SpotLight = lights[randi() % lights.size()]
 		Geo.lamp_set_on(l, false)
 		get_tree().create_timer(rand_range(0.05, 0.3)).connect("timeout", self, "_relight", [l])
@@ -250,7 +273,7 @@ func net_event(type: String, args: Array) -> void:
 			for k in keys:
 				k.enraged = true
 			var hud = world.hud
-			if hud:
+			if hud and here():
 				var who = "you" if args[0] == Net.my_id() or not Net.active() else Net.pname(args[0])
 				hud.subtitle("%s took the master key.   the exit is open.   run." % who, 4.0)
 				Audio.play("pickup", -2.0, 0.8)

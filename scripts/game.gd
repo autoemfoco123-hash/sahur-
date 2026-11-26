@@ -3,7 +3,7 @@ extends Node
 
 const LEVELS := ["0", "1"]
 const INFO := {
-	"0": {"title": "sector 0", "name": "the sahur hallways", "goal": "photograph him (f).  answer when he calls (q).  find the way out."},
+	"0": {"title": "sector 0", "name": "the sahur hallways", "goal": "photograph him (f).  answer when he calls (q).  find the door (e)."},
 	"1": {"title": "sector 1", "name": "the key rooms", "goal": "photograph them (f).  take the master key.  they only move when nobody is looking."},
 }
 

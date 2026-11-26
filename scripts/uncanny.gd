@@ -17,6 +17,7 @@ var floor_y = 0.0
 var blackout_range = Vector2(55.0, 100.0)
 var blackouts = true
 
+var nav                   # the sector's NavGrid (one Uncanny per sector you are in)
 var _watchers = []
 var _tposers = []
 var _event_t = 8.0
@@ -30,10 +31,25 @@ var _behind_life = 0.0
 
 func setup(w, opts := {}) -> void:
 	world = w
+	nav = w.nav
 	for k in opts:
 		set(k, opts[k])
 	world.add_child(self)
 	_blackout_t = rand_range(blackout_range.x, blackout_range.y)
+
+
+## Leaving the sector takes its ghosts along.
+func _exit_tree() -> void:
+	for n in _watchers + _tposers:
+		if is_instance_valid(n):
+			n.queue_free()
+	_watchers.clear()
+	_tposers.clear()
+	if _behind != null and is_instance_valid(_behind):
+		_behind.queue_free()
+		_behind = null
+		if world == null or not world._transit:
+			Audio.set_silence(false)
 
 
 func add_tposers(n: int) -> void:
@@ -48,10 +64,10 @@ func add_tposers(n: int) -> void:
 
 
 func _far_point(min_dist: float) -> Vector3:
-	if world.nav == null:
+	if nav == null:
 		return Vector3.INF
 	for i in 40:
-		var p: Vector3 = world.nav.random_open(world.rng, floor_y)
+		var p: Vector3 = nav.random_open(world.rng, floor_y)
 		if p.distance_to(world.player.global_transform.origin) > min_dist and not world.player.can_see(p + Vector3(0, 1.5, 0), 60.0, 200.0):
 			return p
 	return Vector3.INF
@@ -138,7 +154,7 @@ func _blackout() -> void:
 	fwd = fwd.normalized()
 	var spot: Vector3 = pl.global_transform.origin + fwd * rand_range(13.0, 17.0)
 	spot.y = floor_y
-	if (world.nav == null or world.nav.is_open(spot)) and _watchers.size() <= max_watchers:
+	if (nav == null or nav.is_open(spot)) and _watchers.size() <= max_watchers:
 		var clear: bool = pl.get_world().direct_space_state.intersect_ray(pl.eye_pos(), spot + Vector3(0, 1.5, 0), [pl], Geo.LAYER_WORLD).empty()
 		if clear:
 			get_tree().create_timer(1.2).connect("timeout", self, "_spawn_watcher", [spot])
@@ -158,7 +174,7 @@ func _spawn_behind() -> void:
 	back.y = 0
 	back = back.normalized()
 	var spot: Vector3 = pl.global_transform.origin + back * 2.6
-	if world.nav and not world.nav.is_open(spot):
+	if nav and not nav.is_open(spot):
 		return
 	if not pl.get_world().direct_space_state.intersect_ray(pl.eye_pos(), spot + Vector3(0, 1.4, 0), [pl], Geo.LAYER_WORLD).empty():
 		return

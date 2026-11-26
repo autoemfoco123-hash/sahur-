@@ -27,6 +27,8 @@ var chase_player: AudioStreamPlayer3D
 var aggro_target = 0.0
 var aggro = 0.0
 
+var nav                   # the NavGrid of the sector it lives in
+var sector = 0            # brainrots never leave their sector: they only hunt operatives in it
 var _path = PoolVector3Array()
 var _path_i = 0
 var _repath = 0.0
@@ -37,6 +39,8 @@ var _stinger_cd = 0.0
 
 func setup(w, id: String, pos: Vector3, is_hostile := true):
 	world = w
+	nav = w.nav
+	sector = w.sector_at(pos)
 	model_id = id
 	hostile = is_hostile
 	collision_layer = Geo.LAYER_ENEMY
@@ -174,8 +178,8 @@ func move_to(target: Vector3, spd: float, delta: float) -> bool:
 	if _repath <= 0.0 or target.distance_to(_last_target) > 1.5:
 		_repath = 0.35
 		_last_target = target
-		if world.nav:
-			_path = world.nav.path(pos, target)
+		if nav:
+			_path = nav.path(pos, target)
 		else:
 			_path = PoolVector3Array([target])
 		_path_i = 0
@@ -221,7 +225,7 @@ func dist_to_player() -> float:
 	if puppet:
 		return _local_dist()
 	var best = 1e9
-	for t in world.targets():
+	for t in world.targets(sector):
 		best = min(best, _flat(t.pos, global_transform.origin))
 	return best
 
@@ -235,7 +239,7 @@ func sees_player(max_dist := 20.0) -> bool:
 	var from = eye()
 	var best = 1e9
 	var seen = -1
-	for t in world.targets():
+	for t in world.targets(sector):
 		var d = from.distance_to(t.eye)
 		if d > max_dist or d > best:
 			continue
@@ -255,12 +259,12 @@ func sees_player(max_dist := 20.0) -> bool:
 func target_pos() -> Vector3:
 	for want_id in [hunt_id, chase_id]:
 		if want_id >= 0:
-			var t = world.target_by_id(want_id)
+			var t = world.target_by_id(want_id, sector)
 			if t != null:
 				return t.pos
 	var best = 1e9
 	var at = global_transform.origin
-	for t in world.targets():
+	for t in world.targets(sector):
 		var d = _flat(t.pos, global_transform.origin)
 		if d < best:
 			best = d
@@ -276,12 +280,12 @@ func seen_by_player(max_angle := 45.0, max_dist := 60.0) -> bool:
 
 
 func check_catch() -> void:
-	for t in world.targets():
+	for t in world.targets(sector):
 		if _flat(t.pos, global_transform.origin) < catch_dist and abs(t.pos.y - global_transform.origin.y) < 2.5:
 			world.catch_target(t.id, model_id, death_msg)
 
 
 func random_target() -> Vector3:
-	if world.nav:
-		return world.nav.random_open(world.rng, global_transform.origin.y)
+	if nav:
+		return nav.random_open(world.rng, global_transform.origin.y)
 	return global_transform.origin + Vector3(rand_range(-10, 10), 0, rand_range(-10, 10))

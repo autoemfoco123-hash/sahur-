@@ -103,6 +103,8 @@ func _grade() -> Dictionary:
 		if not cam.get_world().direct_space_state.intersect_ray(from, face, ex, Geo.LAYER_WORLD).empty():
 			continue
 		var dist = from.distance_to(face)
+		if dist > 45.0:
+			continue          # another sector, or a speck in the fog
 		var frac = h / (2.0 * dist * half)                       # share of the frame height
 		var size_s = smoothstep(0.06, 0.5, frac) * (1.0 - 0.45 * smoothstep(1.0, 1.8, frac))
 		var center_s = 1.0 - clamp(Vector2(nx, ny * 0.8).length() / 0.95, 0.0, 1.0)

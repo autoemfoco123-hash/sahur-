@@ -56,7 +56,7 @@ func make_master() -> void:
 ## Is any operative looking at this key right now (view cone + line of sight)?
 func _watched() -> bool:
 	var me = global_transform.origin + Vector3(0, 1.3, 0)
-	for t in world.targets():
+	for t in world.targets(sector):
 		if not t.has("fwd"):
 			continue
 		var to: Vector3 = me - t.eye
@@ -87,18 +87,18 @@ func think(delta: float) -> void:
 		# flee: hop away from the nearest operative
 		var best = null
 		var bd = 1e9
-		for t in world.targets():
+		for t in world.targets(sector):
 			var dd = t.pos.distance_to(global_transform.origin)
 			if dd < bd:
 				bd = dd
 				best = t
 		if best and bd < 14.0:
 			var away = global_transform.origin + (global_transform.origin - best.pos).normalized() * 6.0
-			if world.nav:
-				var c: Vector2 = world.nav.to_cell(away)
-				if c.x < 0 or c.y < 0 or c.x >= world.nav.w or c.y >= world.nav.h or not world.nav.is_open(away):
+			if nav:
+				var c: Vector2 = nav.to_cell(away)
+				if c.x < 0 or c.y < 0 or c.x >= nav.w or c.y >= nav.h or not nav.is_open(away):
 					if _flee_t <= 0.0:
-						_flee_goal = world.nav.random_open(world.rng, global_transform.origin.y)
+						_flee_goal = nav.random_open(world.rng, global_transform.origin.y)
 						_flee_t = 3.0
 					away = _flee_goal
 			_flee_t -= delta

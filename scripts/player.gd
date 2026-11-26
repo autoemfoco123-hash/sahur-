@@ -131,6 +131,15 @@ func spectate(a) -> void:
 		velocity = Vector3.ZERO
 
 
+## Back in your own body (revived for a new wave).
+func unspectate() -> void:
+	spectate_target = null
+	shape.disabled = false
+	velocity = Vector3.ZERO
+	controls = true
+	look_enabled = true
+
+
 func _physics_process(delta: float) -> void:
 	_t += delta
 	_shout_cd -= delta

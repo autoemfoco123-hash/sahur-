@@ -7,7 +7,7 @@ extends Node
 ##   the calls, catches, escapes and the end of the round; each player sends its own movement
 ## Every RPC lives on this autoload (/root/Net), so node paths always match on all peers.
 
-const VERSION = "sahur-mp-1"
+const VERSION = "sahur-mp-2"
 const PORT = 7777
 const DISCOVERY_PORT = 7778
 const MAX_PLAYERS = 8
@@ -29,9 +29,10 @@ enum { OFFLINE, CONNECTING, LOBBY, PLAYING }
 var state = OFFLINE
 var dedicated = false
 var server_name = "sahur"
-var players = {}                  # id -> {name, color, ready, alive, escaped, in_game}
+var players = {}                  # id -> {name, color, ready, alive, escaped, in_game, sector}
 var round_seed = 0
-var level_id = "0"                # sector for the next round (the host picks; escapes advance it)
+var level_id = "0"                # the sector a run starts in (always 0; --level= for testing)
+var wave = 0                      # the deepest sector anyone has reached this run
 var world = null                  # the running World (set by world.gd)
 var found = {}                    # LAN servers: ip -> {name, players, max, playing, t}
 var chat_log = []
@@ -104,7 +105,7 @@ func _new_player(n: String) -> Dictionary:
 	var ci = 0
 	while ci in used and ci < COLORS.size() - 1:
 		ci += 1
-	return {"name": _clean(n), "cidx": ci, "color": COLORS[ci], "ready": false, "alive": true, "escaped": false, "in_game": false, "photo": 0, "photo_of": ""}
+	return {"name": _clean(n), "cidx": ci, "color": COLORS[ci], "ready": false, "alive": true, "escaped": false, "in_game": false, "photo": 0, "photo_of": "", "sector": 0}
 
 
 func _clean(n: String) -> String:
@@ -258,16 +259,6 @@ func _sync() -> void:
 	emit_signal("players_changed")
 
 
-## Host: next sector in the list.
-func cycle_level() -> void:
-	if not is_server() or state != LOBBY:
-		return
-	var i = Game.LEVELS.find(level_id)
-	level_id = Game.LEVELS[(i + 1) % Game.LEVELS.size()]
-	_say("sector %s · %s" % [level_id, Game.INFO[level_id].name])
-	_sync()
-
-
 func level_name(l := "") -> String:
 	l = level_id if l == "" else l
 	return "sector %s · %s" % [l, Game.INFO.get(l, {}).get("name", "?")]
@@ -318,7 +309,9 @@ func _begin_countdown() -> void:
 func _start_round() -> void:
 	randomize()
 	round_seed = randi() % 2000000000
+	wave = int(max(0, Game.LEVELS.find(level_id)))
 	for id in players:
+		players[id].sector = wave
 		players[id].alive = true
 		players[id].escaped = false
 		players[id].in_game = true
@@ -431,6 +424,13 @@ remote func _ev(type: String, args: Array) -> void:
 		"escaped":
 			if players.has(args[0]):
 				players[args[0]].escaped = true
+		"advanced":
+			if players.has(args[0]):
+				players[args[0]].sector = args[1]
+		"revived":
+			if players.has(args[0]):
+				players[args[0]].alive = true
+				players[args[0]].sector = args[1]
 		"left":
 			pass
 	if world:
@@ -456,27 +456,48 @@ remote func _req(type: String, args: Array) -> void:
 func _handle(id: int, type: String, args: Array) -> void:
 	if not players.has(id) or state != PLAYING:
 		return
+	var p = players[id]
+	# every request goes to the sector that operative is in
+	var lv = world.level_of(id) if world else null
+	var last = Game.LEVELS.size() - 1
 	match type:
 		"shout":
 			event("shout", [id])
-			if world and world.level and world.level.has_method("on_shout"):
-				world.level.on_shout(id)
+			if lv and lv.has_method("on_shout"):
+				lv.on_shout(id)
 		"died":
-			if players[id].alive and not players[id].escaped:
+			if p.alive and not p.escaped:
 				event("died", [id, args[0] if args.size() > 0 else ""])
 		"photo":
-			if args.size() > 1 and int(args[1]) > int(players[id].get("photo", 0)):
-				players[id].photo = int(args[1])
-				players[id].photo_of = str(args[0])
-			if world and world.level and world.level.has_method("on_request"):
-				world.level.on_request(id, type, args)
+			if args.size() > 1 and int(args[1]) > int(p.get("photo", 0)):
+				p.photo = int(args[1])
+				p.photo_of = str(args[0])
+			if lv and lv.has_method("on_request"):
+				lv.on_request(id, type, args)
+		"advance":
+			# through the exit door into the next sector
+			var from = int(args[0]) if args.size() > 0 else -1
+			var locked = lv and lv.has_method("exit_locked") and lv.exit_locked()
+			if not p.alive or p.escaped or locked or from != int(p.sector) or from >= last:
+				return
+			var to = from + 1
+			if to > wave:
+				# a new wave: the sector wakes up, and hush sends the dead back in
+				wave = to
+				event("wave", [to])
+				for pid in round_ids():
+					if not players[pid].alive and not players[pid].escaped:
+						_log("%s revived in sector %d" % [players[pid].name, to])
+						event("revived", [pid, to])
+			_log("%s → sector %d (wave %d)" % [p.name, to, wave])
+			event("advanced", [id, to])
 		"escaped":
-			var locked = world and world.level and world.level.has_method("exit_locked") and world.level.exit_locked()
-			if players[id].alive and not players[id].escaped and not locked:
+			var locked = lv and lv.has_method("exit_locked") and lv.exit_locked()
+			if p.alive and not p.escaped and not locked and int(p.sector) >= last:
 				event("escaped", [id])
 		_:
-			if world and world.level and world.level.has_method("on_request"):
-				world.level.on_request(id, type, args)
+			if lv and lv.has_method("on_request"):
+				lv.on_request(id, type, args)
 
 
 ## Server: a brainrot reached a player.
@@ -501,14 +522,10 @@ func _end_round() -> void:
 	var anyone_out = false
 	for id in round_ids():
 		var p = players[id]
-		res.append([p.name, "made it out" if p.escaped else "became rot", p.cidx, p.get("photo", 0), p.get("photo_of", "")])
+		var where = "sector %d" % int(p.get("sector", 0))
+		res.append([p.name, "made it out" if p.escaped else "became rot in " + where, p.cidx, p.get("photo", 0), p.get("photo_of", "")])
 		anyone_out = anyone_out or p.escaped
-	_log("round over")
-	# somebody made it out: the next round goes one sector deeper
-	if anyone_out:
-		var i = Game.LEVELS.find(level_id)
-		level_id = Game.LEVELS[(i + 1) % Game.LEVELS.size()]
-	res.append(["next", level_name(), -1])
+	_log("round over · deepest sector %d · %s" % [wave, "someone made it out" if anyone_out else "nobody made it out"])
 	for id in players:
 		players[id].in_game = false
 	rpc("_round_over", res)
