@@ -26,6 +26,12 @@ var chase_sound = ""
 var chase_player: AudioStreamPlayer3D
 var aggro_target = 0.0
 var aggro = 0.0
+var kill_t = -1.0           # seconds into the kill animation (-1: not killing)
+var kill_at = Vector3.ZERO  # where the victim stands
+var kill_hit = 0.42         # when the blow lands (the body flies then)
+var kill_len = 1.1
+var kill_force = 9.0        # how fast the body leaves (m/s)
+var kill_lift = 4.0
 
 var nav                   # the NavGrid of the sector it lives in
 var sector = 0            # brainrots never leave their sector: they only hunt operatives in it
@@ -107,11 +113,18 @@ func _animate(_delta: float, _spd: float) -> void:
 func _physics_process(delta: float) -> void:
 	if world == null:
 		return
+	if kill_t >= 0.0:
+		kill_t += delta
+		var to = kill_at - global_transform.origin
+		to.y = 0.0
+		face_dir(to, delta, 14.0)
+		if kill_t > kill_len:
+			kill_t = -1.0
 	if puppet:
 		_puppet_step(delta)
 		return
 	want = Vector3.ZERO
-	if not world.dying and not frozen:
+	if not world.dying and not frozen and kill_t < 0.0:
 		think(delta)
 	var hv = Vector3(velocity.x, 0, velocity.z).linear_interpolate(want, clamp(delta * 10.0, 0.0, 1.0))
 	velocity.x = hv.x
@@ -123,7 +136,7 @@ func _physics_process(delta: float) -> void:
 	if _flick <= 0.0:
 		_flick = rand_range(0.05, 0.6)
 		top_light.light_energy = light_energy * (rand_range(0.1, 0.5) if randf() < 0.12 else 1.0)
-	if hostile and not world.dying and not frozen:
+	if hostile and not world.dying and not frozen and kill_t < 0.0:
 		check_catch()
 	_stinger_cd -= delta
 	aggro = move_toward(aggro, aggro_target, delta * (2.0 if aggro_target > aggro else 0.35))
@@ -150,6 +163,12 @@ func net_apply(pos: Vector3, yaw: float, st: int) -> void:
 		rotation.y = yaw
 	if st != net_state():
 		apply_net_state(st)
+
+
+## Everyone sees it: turn to the victim and kill them (the hit lands at kill_hit).
+func play_kill(at: Vector3) -> void:
+	kill_t = 0.0
+	kill_at = at
 
 
 func _puppet_step(delta: float) -> void:
@@ -282,7 +301,7 @@ func seen_by_player(max_angle := 45.0, max_dist := 60.0) -> bool:
 func check_catch() -> void:
 	for t in world.targets(sector):
 		if _flat(t.pos, global_transform.origin) < catch_dist and abs(t.pos.y - global_transform.origin.y) < 2.5:
-			world.catch_target(t.id, model_id, death_msg)
+			world.catch_target(t.id, model_id, death_msg, world.enemies.find(self))
 
 
 func random_target() -> Vector3:

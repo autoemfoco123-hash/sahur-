@@ -27,6 +27,10 @@ func _init() -> void:
 	catch_dist = 1.05
 	light_energy = 0.0
 	drains = false
+	kill_hit = 0.2
+	kill_len = 0.7
+	kill_force = 6.5
+	kill_lift = 3.0
 
 
 func _after_setup() -> void:
@@ -147,6 +151,13 @@ func set_taken() -> void:
 ## Hops on its tip while it moves; perfectly still the moment it is seen.
 func _animate(delta: float, spd: float) -> void:
 	if _body == null:
+		return
+	if kill_t >= 0.0:
+		# the kill: rock back on the tip, then slam forward into them
+		var back = smoothstep(0.0, 0.12, kill_t) * (1.0 - smoothstep(0.12, kill_hit, kill_t))
+		var slam = smoothstep(0.12, kill_hit, kill_t) * (1.0 - smoothstep(0.35, kill_len, kill_t))
+		_body.translation = Vector3(0, 0.08 * back + 0.15 * slam, -0.55 * slam + 0.1 * back)
+		_body.rotation = Vector3(0.25 * back - 0.5 * slam, 0, 0)
 		return
 	if spd < 0.25:
 		_hop = 0.0

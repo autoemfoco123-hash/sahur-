@@ -525,9 +525,9 @@ func award(id: int, pts: int, why: String) -> void:
 
 
 ## Server: a brainrot reached a player.
-func catch(id: int, msg: String, killer := "tung") -> void:
+func catch(id: int, msg: String, killer := "tung", enemy_idx := -1) -> void:
 	if is_server() and players.has(id) and players[id].alive and not players[id].escaped:
-		event("died", [id, msg, killer])
+		event("died", [id, msg, killer, enemy_idx])
 
 
 func _check_round_end() -> void:

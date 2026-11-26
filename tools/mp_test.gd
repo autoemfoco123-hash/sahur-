@@ -26,6 +26,8 @@ func _initialize() -> void:
 			ip = a.split("=")[1]
 		elif a.begins_with("prefix="):
 			prefix = a.split("=")[1]
+		elif a == "noblur":
+			root.get_node("Game").settings.motion_blur = 0.0
 		elif a.begins_with("at="):
 			for e in a.substr(3).split(","):
 				var kv = e.split(":", true, 1)
@@ -93,7 +95,7 @@ func _event(act: String) -> void:
 	if act.begins_with("shot"):
 		var img := root.get_texture().get_data()
 		img.flip_y()
-		img.save_png(prefix + pname + "_" + str(int((OS.get_ticks_msec() - t0) / 1000)) + ".png")
+		img.save_png(prefix + pname + "_" + str(int((OS.get_ticks_msec() - t0) / 100)) + ".png")
 	elif w == null:
 		return
 	elif act == "look":
@@ -141,6 +143,53 @@ func _event(act: String) -> void:
 		w.player.global_transform.origin = w.levels[0].tapes[i] + Vector3(0.8, 0.1, 0)
 	elif act.begins_with("tape"):
 		w.levels[0]._take_tape(int(act.substr(4)))
+	elif act == "totung":
+		# walk right into tung's reach (the server decides the rest)
+		var tg = w.levels[0].tung
+		var tp: Vector3 = tg.global_transform.origin
+		var f = -tg.global_transform.basis.z
+		f.y = 0
+		w.player.global_transform.origin = tp + f.normalized() * 0.9 + Vector3(0, 0.1, 0)
+	elif act == "watch":
+		# stand a few metres from the other operative and tung, with a clear view of both
+		var other = null
+		for pid in w.avatars:
+			other = w.avatars[pid]
+		if other == null:
+			return
+		var tg = w.levels[0].tung
+		var tf = -tg.global_transform.basis.z
+		tf.y = 0
+		var mid: Vector3 = tg.global_transform.origin + tf.normalized() * 0.6
+		var best = null
+		for i in 16:
+			var ang = i * TAU / 16.0
+			for dist in [7.0, 6.0, 5.0]:
+				var c = mid + Vector3(cos(ang), 0, sin(ang)) * dist
+				if not w.nav.is_open(c):
+					continue
+				var hit = w.get_world().direct_space_state.intersect_ray(c + Vector3(0, 1.5, 0), mid + Vector3(0, 1.3, 0), [w.player], 1)
+				if hit.empty():
+					best = c
+					break
+			if best != null:
+				break
+		if best == null:
+			print("[", pname, "] no clear view")
+			return
+		w.player.global_transform.origin = best + Vector3(0, 0.1, 0)
+		var to = mid - best
+		w.player.set_look(atan2(-to.x, -to.z), -0.12)
+	elif act == "aim":
+		var tg = w.levels[0].tung
+		var to = tg.global_transform.origin - w.player.global_transform.origin
+		w.player.set_look(lerp_angle(w.player._yaw, atan2(-to.x, -to.z), 0.5), -0.12)
+	elif act == "corpses":
+		var cs = PoolStringArray()
+		for c in w.corpses:
+			if is_instance_valid(c):
+				cs.append(str(c.center().round()))
+		print("[", pname, "] corpses: ", cs.join(" "), "  tung kill_t=%.2f" % w.levels[0].tung.kill_t)
 	elif act == "tomaster":
 		# right next to the master key, staring at it (watched, it can't run)
 		var lv = w.levels[1]

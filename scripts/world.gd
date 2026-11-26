@@ -12,6 +12,8 @@ extends Spatial
 const FACE := Vector3(0, 2.2, -0.4)
 const WALL_T = 0.28        # outer wall thickness of a sector (level_0.gd T)
 const SlideDoor = preload("res://scripts/slide_door.gd")
+const Ragdoll = preload("res://scripts/ragdoll.gd")
+const MAX_CORPSES = 6
 const Avatar = preload("res://scripts/avatar.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 
@@ -69,6 +71,8 @@ var _points = 0           # offline: the local operative's points
 var _photo_best_off = {}  # offline: enemy index -> best photo score
 var _pending_revive = -1
 var round_over = false
+var corpses = []
+var _my_corpse = null
 
 
 func _ready() -> void:
@@ -462,11 +466,70 @@ func target_by_id(pid: int, sector := -1):
 
 
 ## A brainrot reached an operative (server, or offline).
-func catch_target(pid: int, killer: String, msg: String) -> void:
+func catch_target(pid: int, killer: String, msg: String, enemy_idx := -1) -> void:
 	if Net.active():
-		Net.catch(pid, msg, killer)
+		Net.catch(pid, msg, killer, enemy_idx)
 	elif pid == 1:
+		_death_show(1, enemy_idx)
 		kill(killer, msg)
+
+
+# ------------------------------------------------------------------ how a death looks to everyone
+## The brainrot that did it plays its kill (Tung brings the bat down, a key slams into them) and
+## when the blow lands the body goes flying as a ragdoll. Everyone in the round sees it; the
+## victim gets the jumpscare instead, and finds their body lying there afterwards.
+func _death_show(pid: int, enemy_idx: int) -> void:
+	var me = Net.my_id() if Net.active() else 1
+	var at = Vector3.INF
+	var yaw = 0.0
+	var mine = pid == me and player != null
+	if mine:
+		at = player.global_transform.origin
+		yaw = player.rotation.y
+	elif avatars.has(pid) and is_instance_valid(avatars[pid]):
+		at = avatars[pid].global_transform.origin
+		yaw = avatars[pid].yaw
+	var e = null
+	if enemy_idx >= 0 and enemy_idx < enemies.size() and is_instance_valid(enemies[enemy_idx]):
+		e = enemies[enemy_idx]
+	if e and at != Vector3.INF:
+		e.play_kill(at)
+	if headless or at == Vector3.INF:
+		return
+	var push = Vector3(rand_range(-0.6, 0.6), 1.2, rand_range(-0.6, 0.6))
+	var hit = 0.0
+	if e:
+		var dir = at - e.global_transform.origin
+		dir.y = 0.0
+		dir = dir.normalized() if dir.length() > 0.01 else Vector3.FORWARD
+		# a little sideways too: the bat comes across the body
+		dir = (dir + dir.cross(Vector3.UP) * rand_range(-0.35, 0.35)).normalized()
+		push = dir * e.kill_force + Vector3(0, e.kill_lift, 0)
+		hit = e.kill_hit
+	var color = Net.pcolor(pid) if Net.active() else UI.AMBER
+	get_tree().create_timer(hit).connect("timeout", self, "_body_flies", [pid, mine, at, yaw, color, push, e != null])
+
+
+func _body_flies(pid: int, mine: bool, at: Vector3, yaw: float, color: Color, push: Vector3, struck: bool) -> void:
+	if not mine and avatars.has(pid) and is_instance_valid(avatars[pid]):
+		avatars[pid].visible = false
+	var r = Ragdoll.new()
+	r.build(self, color, at, yaw, push)
+	corpses.append(r)
+	while corpses.size() > MAX_CORPSES:
+		var old = corpses.pop_front()
+		if is_instance_valid(old):
+			old.queue_free()
+	if mine:
+		# behind the jumpscare: shown when the scream cuts, lying wherever it landed
+		r.visible = false
+		_my_corpse = r
+	if struck:
+		var hp = at + Vector3(0, 1.3, 0)
+		Audio.play_at("tung", hp, self, 10.0, 0.5, 70.0)
+		Audio.play_at("stomp", hp, self, 4.0, 0.75, 60.0)
+		if player and not mine and player.global_transform.origin.distance_to(at) < 14.0:
+			player.add_trauma(0.35)
 
 
 # ------------------------------------------------------------------ network glue
@@ -512,6 +575,7 @@ func net_event(type: String, args: Array) -> void:
 					hud.subtitle("%s: \"sahur!\"" % Net.pname(pid), 1.6)
 		"died":
 			var pid: int = args[0]
+			_death_show(pid, int(args[3]) if args.size() > 3 else -1)
 			var msg: String = args[1] if args.size() > 1 and args[1] != "" else "tung tung tung sahur found you.\nyou should have answered."
 			if pid == me and player:
 				if not dying:
@@ -1071,6 +1135,8 @@ func _scare_hit() -> void:
 ## Cut, not fade: black and dead silence.
 func _scare_cut() -> void:
 	_scare = 0
+	if _my_corpse != null and is_instance_valid(_my_corpse):
+		_my_corpse.visible = true
 	hud.fade_rect.color = Color(0, 0, 0, 1)
 	Audio.silence_all(true)
 	if is_instance_valid(_rig):

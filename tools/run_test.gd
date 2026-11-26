@@ -154,6 +154,34 @@ func _event(act: String) -> void:
 		w.player.global_transform.origin = at
 		w.player.set_look(atan2(n.x, n.z), 0.0)
 		print("writing %d visible=%s" % [i, str(l.visible)])
+	elif act.begins_with("killscene"):
+		# an operative in front of tung (or a key), seen from the side: watch the kill
+		var keys = act.ends_with("keys")
+		var pl = w.player
+		var f = -pl.cam.global_transform.basis.z
+		f.y = 0
+		f = f.normalized()
+		var right = f.cross(Vector3.UP)
+		var killer = w.level.keys[1] if keys else w.levels[0].tung
+		killer.frozen = true
+		if keys:
+			killer.dormant = 999.0
+		var center = pl.global_transform.origin + f * 4.2
+		center.y = pl.global_transform.origin.y
+		var flip = -1.0 if act.find("flip") >= 0 else 1.0
+		killer.global_transform.origin = center - right * 0.75 * flip
+		var a = load("res://scripts/avatar.gd").new()
+		w.add_child(a)
+		a.setup(7, "operative 07", Color(0.35, 0.8, 1.0))
+		var at = center + right * 0.6 * flip
+		a.place(at, atan2(right.x * flip, right.z * flip))
+		w.avatars[7] = a
+		killer.look_at(at, Vector3.UP)
+		killer.rotation.x = 0
+		set_meta("victim", 7)
+		set_meta("killer", w.enemies.find(killer))
+	elif act == "dokill":
+		w._death_show(get_meta("victim"), get_meta("killer"))
 	elif act == "grabmaster":
 		var lv = w.levels[1]
 		w.player.global_transform.origin = lv.master.global_transform.origin + Vector3(1.4, 0.1, 0)

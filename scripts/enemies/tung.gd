@@ -177,6 +177,8 @@ func _animate(delta: float, spd: float) -> void:
 	if bat:
 		var bb = _bat_base.slerp(_bat_up, swing)
 		bat.transform.basis = bb.rotated(Vector3.RIGHT, _bat_a + swing * sin(_t * 9.0) * 0.06)
+	if kill_t >= 0.0:
+		_kill_pose(b)
 	# Eyes: track you with saccades. Blink only when you look away.
 	if world.player == null:
 		return
@@ -208,6 +210,28 @@ func _animate(delta: float, spd: float) -> void:
 			l.rotation = Vector3(lerp(r0.x, deg2rad(-88.0), max(close, squint)), r0.y, r0.z)
 	var near = dist_to_player() < 3.6 and (state == S.HUNT or state == S.CHASE)
 	swing = move_toward(swing, 1.0 if near else 0.0, delta * 2.2)
+
+
+## The kill: the bat goes up over the right shoulder, then comes down and across, hard,
+## his whole body turning into it. Then he settles back.
+func _kill_pose(b: Spatial) -> void:
+	var t = kill_t
+	var wind = smoothstep(0.0, 0.3, t)
+	var strike = smoothstep(0.3, kill_hit + 0.02, t)
+	var k = 1.0 - smoothstep(0.7, kill_len, t)
+	var arm: Spatial = _j["armR"]
+	var el: Spatial = _j["elbowR"]
+	var arm_l: Spatial = _j["armL"]
+	var ax = lerp(lerp(arm.rotation.x, 3.3, wind), 0.8, strike)
+	var az = lerp(lerp(arm.rotation.z, -0.6, wind), 0.5, strike)
+	arm.rotation = Vector3(lerp(arm.rotation.x, ax, k), 0, lerp(arm.rotation.z, az, k))
+	el.rotation.x = lerp(el.rotation.x, lerp(lerp(el.rotation.x, 1.6, wind), 0.08, strike), k)
+	arm_l.rotation.x = lerp(arm_l.rotation.x, lerp(0.2, -0.7, strike), k)
+	var bat: Spatial = _j.get("bat")
+	if bat:
+		bat.transform.basis = bat.transform.basis.slerp(Basis(Vector3.RIGHT, -0.25), k)
+	b.rotation.y += lerp(lerp(0.0, -0.55, wind), 0.6, strike) * k
+	b.rotation.x += lerp(lerp(0.0, 0.14, wind), -0.3, strike) * k
 
 
 func net_state() -> int:
