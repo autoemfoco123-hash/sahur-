@@ -288,6 +288,28 @@ func _event(act: String) -> void:
 		for k in lv.keys:
 			ks.append("%s obs=%s dorm=%.1f pos=%s yaw=%.2f vis=%s" % ["M" if k.master else "k", str(k.observed), k.dormant, str(k.global_transform.origin.round()), k.rotation.y, str(k.model.is_visible_in_tree())])
 		print("keys ", ks.join(" | "))
+	elif act.begins_with("stare"):
+		# key i, awake (not frozen) but sleeping (dormant), 1.5 m in front of you
+		var lv = w.levels[w.my_sector]
+		var k = lv.keys[int(act.substr(5))]
+		k.frozen = false
+		k.dormant = 1e9
+		var pl = w.player
+		var f = -pl.cam.global_transform.basis.z
+		f.y = 0
+		f = f.normalized()
+		k.global_transform.origin = pl.global_transform.origin + f * 1.5
+		k.look_at(pl.global_transform.origin, Vector3.UP)
+		k.rotation.x = 0
+		var face = k.model.global_transform.xform(Vector3(0, k.model.get_meta("face_y"), 0))
+		var to = face - pl.eye_pos()
+		pl.set_look(atan2(-to.x, -to.z), atan2(to.y, Vector2(to.x, to.z).length()))
+	elif act == "obs":
+		var lv = w.levels[w.my_sector]
+		var ks = PoolStringArray()
+		for k in lv.keys:
+			ks.append("%s obs=%s frz=%s dorm=%.0f d=%.2f" % ["M" if k.master else "k", str(k.observed), str(k.frozen), k.dormant, Vector2(k.global_transform.origin.x - w.player.global_transform.origin.x, k.global_transform.origin.z - w.player.global_transform.origin.z).length()])
+		print("obs ", ks.join(" | "), " stare=", lv._stare, " wave=", lv.wave_started, " targets=", w.targets(lv.index).size())
 	elif act == "kill67":
 		w.kill("67", "67 took you.")
 	elif act == "gates":

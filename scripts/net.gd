@@ -31,6 +31,7 @@ var dedicated = false
 var server_name = "sahur"
 var players = {}                  # id -> {name, color, ready, alive, escaped, in_game, sector}
 var round_seed = 0
+var seed_override = -1             # recordings / tests: build this map instead of a random one
 var level_id = "0"                # the sector a run starts in (always 0; --level= for testing)
 var wave = 0                      # the deepest sector anyone has reached this run
 var world = null                  # the running World (set by world.gd)
@@ -308,7 +309,7 @@ func _begin_countdown() -> void:
 
 func _start_round() -> void:
 	randomize()
-	round_seed = randi() % 2000000000
+	round_seed = seed_override if seed_override >= 0 else randi() % 2000000000
 	wave = int(max(0, Game.LEVELS.find(level_id)))
 	for id in players:
 		players[id].sector = wave
