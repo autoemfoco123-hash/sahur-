@@ -59,6 +59,7 @@ var vel_local = Vector3.ZERO
 var att_roll = 0.0
 var att_pitch = 0.0
 var waking = -1.0          # seconds into waking up on the floor (-1: awake)
+var _launch = 0.0          # knocked off your feet: no floor snap for a moment
 var wake_blur = 0.0        # how blurred the eyes still are (world.gd feeds the post shader)
 var _wake_yaw = 0.0
 var _wake_side = 1.0
@@ -193,12 +194,16 @@ func _physics_process(delta: float) -> void:
 	var spd = (CROUCH if crouching else WALK) * speed_mult
 	var dir = (transform.basis.xform(Vector3(input.x, 0, input.y))).normalized()
 	var hv = Vector3(velocity.x, 0, velocity.z)
-	var accel = 12.0 if is_on_floor() else 3.0
+	var accel = 12.0 if is_on_floor() and _launch <= 0.0 else 3.0
 	hv = hv.linear_interpolate(dir * spd, clamp(accel * delta, 0.0, 1.0))
 	velocity.x = hv.x
 	velocity.z = hv.z
 	var snap = Vector3.DOWN * 0.4
-	if not is_on_floor():
+	if _launch > 0.0:
+		_launch -= delta
+		snap = Vector3.ZERO
+		velocity.y -= gravity * delta
+	elif not is_on_floor():
 		velocity.y -= gravity * delta
 	elif controls and Input.is_action_just_pressed("jump") and not crouching:
 		velocity.y = jump_vel
@@ -356,6 +361,12 @@ func _update_hover() -> void:
 			_hover = c
 	if world:
 		world.hud.set_prompt(_hover.prompt if _hover else "")
+
+
+## Something huge hit you: you fly.
+func knock(v: Vector3) -> void:
+	velocity = v
+	_launch = 0.3
 
 
 func add_trauma(x: float) -> void:

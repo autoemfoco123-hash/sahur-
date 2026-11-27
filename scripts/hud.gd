@@ -48,6 +48,10 @@ var _left: Control
 var _right: Control
 var _island_t = 0.0
 var _t0 = 0.0
+var boss_root: VBoxContainer   # a boss's name, health and state (sector 3.5)
+var boss_name: Label
+var boss_bar: ProgressBar
+var boss_state: Label
 
 
 ## Gyroscope / attitude indicator drawn inside the goggles.
@@ -242,6 +246,24 @@ func _ready() -> void:
 	island_label = UI.label("", 16, UI.WHITE, "light", Label.ALIGN_CENTER)
 	island.add_child(island_label)
 	island.modulate.a = 0.0
+
+	# a boss: name, health, what its shield is doing
+	boss_root = VBoxContainer.new()
+	boss_root.add_constant_override("separation", 4)
+	boss_root.anchor_left = 0.5
+	boss_root.anchor_right = 0.5
+	boss_root.margin_left = -220
+	boss_root.margin_right = 220
+	boss_root.margin_top = 66
+	boss_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	boss_root.visible = false
+	root.add_child(boss_root)
+	boss_name = UI.label("", 15, UI.WHITE, "medium", Label.ALIGN_CENTER)
+	boss_root.add_child(boss_name)
+	boss_bar = UI.bar(Color(1.0, 0.16, 0.1), 440, 6)
+	boss_root.add_child(boss_bar)
+	boss_state = UI.label("", 12, UI.SOFT, "medium", Label.ALIGN_CENTER)
+	boss_root.add_child(boss_state)
 
 	# title card
 	title_small = UI.label("", 13, UI.SOFT, "medium", Label.ALIGN_CENTER)
@@ -533,7 +555,8 @@ func _process(delta: float) -> void:
 		var lines = PoolStringArray()
 		for pid in Net.round_ids():
 			var p = Net.players[pid]
-			var st = "out" if p.escaped else ("rot" if not p.alive else "sector %d" % int(p.get("sector", 0)))
+			var si = int(clamp(int(p.get("sector", 0)), 0, Game.LEVELS.size() - 1))
+			var st = "out" if p.escaped else ("rot" if not p.alive else Game.INFO.get(Game.LEVELS[si], {}).get("title", "sector %d" % si))
 			lines.append("%s · %s · %d" % [p.name, st, int(p.get("points", 0))])
 		roster.text = lines.join("\n")
 	var c = Game.brain_cells
@@ -565,6 +588,19 @@ func _process(delta: float) -> void:
 
 
 # ------------------------------------------------------------------ api
+## A boss's bar (frac 0..1); exposed: its shield is down (the bar burns brighter).
+func boss(show: bool, name := "", frac := 1.0, state := "", exposed := false) -> void:
+	boss_root.visible = show and not death_root.visible
+	if not show:
+		return
+	boss_name.text = name.to_upper()
+	boss_bar.value = clamp(frac, 0.0, 1.0) * 100.0
+	boss_state.text = state
+	var col = Color(1.0, 0.85, 0.8) if exposed else Color(1.0, 0.16, 0.1)
+	(boss_bar.get_stylebox("fg") as StyleBoxFlat).bg_color = col
+	boss_state.add_color_override("font_color", UI.WHITE if exposed else UI.SOFT)
+
+
 func show_stats(on: bool) -> void:
 	_left.visible = on
 	_right.visible = on

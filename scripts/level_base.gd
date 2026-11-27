@@ -36,6 +36,7 @@ var geo: Spatial            # this sector's static meshes
 var has_exit_door = true    # false: this sector ends some other way (world.gd builds no door)
 var mono = false            # monochrome sector: only the operatives keep their colour
 var revive_wakes = true     # sent back in here, you come to on the floor (not in the field)
+var view_far = 0.0          # a sector too big for potato's short view distance asks for more
 var ending_text = ""        # what you read when the run ends here
 var chalk = Color(0.9, 1.0, 0.9)   # colour of the hush marks on walls and floors
 var wall_blockers = []      # spots on walls taken by something (hotel doors): no writing there

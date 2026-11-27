@@ -243,6 +243,20 @@ func _event(act: String) -> void:
 		var n = int(act.substr(3))
 		w.player.global_transform.origin = lv.numerals[n].pos + Vector3(0.6, 0.1, 0.6)
 		lv._take_num(n)
+	elif act == "bstate":
+		var lv = w.levels[w.levels.size() - 1]
+		var on = 0
+		for a in lv.anchors:
+			on += 1 if a.on else 0
+		print("[", pname, "] boss fight=%d hp=%.1f/%.1f phase=%d shield=%s anchors=%d reinf=%d my_sector=%d cells=%.0f out=%s dying=%s" % [lv.fight, lv.hp, lv.hp_max, lv.phase, str(lv.shield), on, lv._reinf, w.my_sector, root.get_node("Game").brain_cells, str(w.my_out), str(w.dying)])
+	elif act.begins_with("goanch"):
+		var lv = w.levels[w.levels.size() - 1]
+		w.player.global_transform.origin = lv.anchors[int(act.substr(6))].pos + Vector3(1.5, 0.3, 0)
+	elif act.begins_with("useanch"):
+		w.levels[w.levels.size() - 1]._use_anchor(int(act.substr(7)))
+	elif act.begins_with("ph"):
+		var lv = w.levels[w.levels.size() - 1]
+		net.request("photo", ["ultra", int(act.substr(2)), w.enemies.find(lv.ultra)])
 	elif act == "freeze67":
 		w.levels[3].ss.frozen = true
 

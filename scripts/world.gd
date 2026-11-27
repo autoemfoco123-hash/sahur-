@@ -74,6 +74,7 @@ var _pending_revive = -1
 var round_over = false
 var corpses = []
 var _my_corpse = null
+var _death_tw            # the death sequence (cut short when you are sent back in)
 var env_sector = -1       # whose light and haze you see (the view sector, or the bright one through a door)
 var _env_override = false # a level took over the look (the tear in sector 2)
 
@@ -379,7 +380,7 @@ func _apply_quality() -> void:
 	if player:
 		player.cam.fov = 88.0 + float(Game.settings.fisheye) * 14.0
 		# Nothing past the fog gets drawn on potato.
-		player.cam.far = 36.0 if q == 0 else 300.0
+		player.cam.far = max(36.0 if q == 0 else 300.0, level.view_far if level else 0.0)
 	_cull_lamps()
 
 
@@ -780,7 +781,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_next_spectate()
 		return
 	if dying and not Net.active() and event is InputEventMouseButton and event.pressed and has_meta("can_skip"):
-		Game.restart_level()
+		remove_meta("can_skip")
+		_offline_over()
 
 
 ## Single player freezes the world; in multiplayer the office keeps going around you.
@@ -1135,6 +1137,9 @@ func revive_local(s: int) -> void:
 		_pending_revive = s      # after the scream is over
 		return
 	_pending_revive = -1
+	if _death_tw and _death_tw.is_valid():
+		_death_tw.kill()
+	_death_tw = null
 	_clear_greeter()
 	if spectate_id >= 0 and avatars.has(spectate_id) and is_instance_valid(avatars[spectate_id]):
 		avatars[spectate_id].set_spectated(false)
@@ -1207,9 +1212,9 @@ func kill(_id: String, msg: String) -> void:
 	_rig = Spatial.new()
 	player.cam.add_child(_rig)
 	var m: Spatial
-	_scare_sound = {"keys": "scare_keys", "67": "scare_67"}.get(_id, "scare_scream")
+	_scare_sound = {"keys": "scare_keys", "67": "scare_67", "ultra": "scare_67"}.get(_id, "scare_scream")
 	_scare_hands = []
-	if _id == "67":
+	if _id == "67" or _id == "ultra":
 		var SM = load("res://scripts/sixseven_model.gd")
 		m = SM.build()
 		_rig.add_child(m)
@@ -1271,6 +1276,7 @@ func kill(_id: String, msg: String) -> void:
 	# no warning, no pause: the instant he has you, he is in your face, screaming
 	_scare_hit()
 	var tw = create_tween()
+	_death_tw = tw
 	tw.tween_interval(1.95)
 	tw.tween_callback(self, "_scare_cut")
 	tw.tween_interval(0.8)
@@ -1281,7 +1287,27 @@ func kill(_id: String, msg: String) -> void:
 	if Net.active():
 		tw.tween_callback(self, "_begin_spectate")
 	else:
-		tw.tween_callback(Game, "restart_level")
+		tw.tween_callback(self, "_offline_over")
+
+
+## Offline, after a death: the sector may send you back in (the boss fight), else start again.
+func _offline_over() -> void:
+	var lv = levels[my_sector] if my_sector >= 0 and my_sector < levels.size() else null
+	if lv and lv.has_method("offline_retry") and lv.offline_retry():
+		if _death_tw and _death_tw.is_valid():
+			_death_tw.kill()
+		dying = false
+		revive_local(my_sector)
+		return
+	Game.restart_level()
+
+
+## Server (Net._check_round_end): everybody is down; the deepest sector may hold the round.
+func round_hold() -> bool:
+	if levels.empty():
+		return false
+	var lv = levels[int(clamp(Net.wave, 0, levels.size() - 1))]
+	return lv.has_method("round_hold") and lv.round_hold()
 
 
 func _scare_hit() -> void:

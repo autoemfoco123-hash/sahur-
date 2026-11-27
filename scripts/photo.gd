@@ -149,7 +149,8 @@ func _grade() -> Dictionary:
 		if not is_instance_valid(m) or not m.is_visible_in_tree():
 			continue
 		var h: float = m.get_meta("height")
-		var face: Vector3 = m.global_transform.xform(Vector3(0, m.get_meta("face_y") if m.has_meta("face_y") else h * 0.8, 0))
+		var fn: Spatial = m.get_node_or_null(m.get_meta("face_node")) if m.has_meta("face_node") else null
+		var face: Vector3 = fn.global_transform.origin if fn else m.global_transform.xform(Vector3(0, m.get_meta("face_y") if m.has_meta("face_y") else h * 0.8, 0))
 		if cam.is_position_behind(face):
 			continue
 		var sp = cam.unproject_position(face)
@@ -166,13 +167,13 @@ func _grade() -> Dictionary:
 		var frac = h / (2.0 * dist * half)                       # share of the frame height
 		var size_s = smoothstep(0.06, 0.5, frac) * (1.0 - 0.45 * smoothstep(1.0, 1.8, frac))
 		var center_s = 1.0 - clamp(Vector2(nx, ny * 0.8).length() / 0.95, 0.0, 1.0)
-		var fwd = -m.global_transform.basis.z
+		var fwd = -(fn.global_transform.basis.z if fn else m.global_transform.basis.z)
 		fwd.y = 0.0
 		var tc = from - face
 		tc.y = 0.0
 		var face_s = clamp((fwd.normalized().dot(tc.normalized()) + 0.3) / 1.3, 0.0, 1.0)
 		var sharp_s = 1.0 - clamp(_rot_speed / 3.0, 0.0, 1.0)
-		var lit = 1.0 if dist < 9.0 else 0.72
+		var lit = 1.0 if dist < 9.0 or fn else 0.72      # (something that big is lit by the room)
 		var s = 100.0 * (0.34 * size_s + 0.24 * center_s + 0.26 * face_s + 0.16 * sharp_s) * lit
 		if dist < 4.0:
 			s += 6.0                                               # nobody gets this close twice
@@ -193,6 +194,8 @@ func _name(id: String) -> String:
 			return "tung tung tung sahur"
 		"master key":
 			return "the master key"
+		"ultra":
+			return "6-7 ultra"
 	return id
 
 

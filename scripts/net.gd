@@ -7,7 +7,7 @@ extends Node
 ##   the calls, catches, escapes and the end of the round; each player sends its own movement
 ## Every RPC lives on this autoload (/root/Net), so node paths always match on all peers.
 
-const VERSION = "sahur-mp-3"
+const VERSION = "sahur-mp-4"
 const PORT = 7777
 const DISCOVERY_PORT = 7778
 const MAX_PLAYERS = 8
@@ -316,7 +316,7 @@ func _sync() -> void:
 
 func level_name(l := "") -> String:
 	l = level_id if l == "" else l
-	return "sector %s · %s" % [l, Game.INFO.get(l, {}).get("name", "?")]
+	return "%s · %s" % [Game.INFO.get(l, {}).get("title", "sector " + l), Game.INFO.get(l, {}).get("name", "?")]
 
 
 func _say(t: String) -> void:
@@ -598,6 +598,8 @@ func _check_round_end() -> void:
 		var p = players[id]
 		if p.in_game and p.alive and not p.escaped:
 			return
+	if world and world.has_method("round_hold") and world.round_hold():
+		return            # the sector sends everybody back in (the boss fight)
 	if _end_t < 0.0:
 		_end_t = 5.0
 

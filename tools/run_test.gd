@@ -407,6 +407,91 @@ func _event(act: String) -> void:
 		w.player.set_look(w.player._yaw + deg2rad(float(act.substr(4))), 0.0)
 	elif act.begins_with("yaw"):
 		w.player.set_look(deg2rad(float(act.substr(3))), 0.0)
+	elif act == "boss":
+		var lv = w.levels[w.my_sector]
+		var on = 0
+		for a in lv.anchors:
+			on += 1 if a.on else 0
+		print("boss fight=%d hp=%.1f/%.1f phase=%d shield=%s anchors=%d me=%s cells=%.1f dying=%s out=%s sink=%.1f act=%d" % [lv.fight, lv.hp, lv.hp_max, lv.phase, str(lv.shield), on, str((w.player.global_transform.origin - lv.center).round()), root.get_node("Game").brain_cells, str(w.dying), str(w.my_out), lv.ultra._sink, lv.ultra.body_act])
+	elif act == "aimboss":
+		var lv = w.levels[w.my_sector]
+		var f = lv.ultra.face_world()
+		var p = w.player.cam.global_transform.origin
+		var to = f - p
+		w.player.set_look(atan2(-to.x, -to.z), atan2(to.y, Vector2(to.x, to.z).length()))
+	elif act.begins_with("tp"):
+		# tp<x>_<z>: stand there, relative to the middle of the hall (the pit)
+		var lv = w.levels[w.my_sector]
+		var xz = act.substr(2).split("_")
+		w.player.global_transform.origin = lv.center + Vector3(float(xz[0]), 0.3, float(xz[1]))
+		w.player.velocity = Vector3.ZERO
+	elif act == "allanchors":
+		var lv = w.levels[w.my_sector]
+		for i in lv.anchors.size():
+			if not lv.anchors[i].on:
+				w.player.global_transform.origin = lv.anchors[i].pos + Vector3(1.5, 0.3, 0)
+				lv.on_request(1, "anchor", [i])
+	elif act.begins_with("uphoto"):
+		w.levels[w.my_sector].on_request(1, "photo", ["ultra", int(act.substr(6))])
+	elif act.begins_with("attack"):
+		# attack<name>: slam / sweep / scream / call6 / call7, at you
+		var lv = w.levels[w.my_sector]
+		var kind = act.substr(6)
+		var me = w.player.global_transform.origin
+		match kind:
+			"slam":
+				lv._emit("slam", [0, me.x, me.z, 1.3])
+			"sweep":
+				var ang = atan2(me.x - lv.center.x, me.z - lv.center.z)
+				lv._emit("sweep", [0, ang - 1.4, ang + 1.4, 1.2, 0.9])
+			"scream":
+				lv._emit("scream", [2.0])
+			"call6", "call7":
+				lv._emit("call", [int(kind.substr(4)), 2.2, 4.2])
+		lv._next_attack = 9999.0
+	elif act == "nob":
+		w.levels[w.my_sector].ultra.model.visible = false
+		w.set_process(false)
+	elif act == "nolamps":
+		for l in w.levels[w.my_sector].lamps:
+			l.visible = false
+	elif act == "noshield":
+		w.levels[w.my_sector].ultra.model.get_node("shield").visible = false
+		w.levels[w.my_sector].ultra.set_physics_process(false)
+	elif act == "lightstat":
+		var n = 0
+		var lit = []
+		for l in w.get_tree().get_nodes_in_group("__none__"):
+			pass
+		_lights(w, lit)
+		print("lights visible: ", lit.size(), " ", lit)
+	elif act == "slab6" or act == "slab7":
+		# stand in the middle of a slab with that number, ~15-25 m from the pit
+		var lv = w.levels[w.my_sector]
+		var want = int(act.substr(4))
+		for c in lv.tiles:
+			var t = lv.tiles[c]
+			var p = lv._tile_center(c)
+			var r = Vector2(p.x - lv.center.x, p.z - lv.center.z).length()
+			if t.kind == want and r > 15.0 and r < 25.0:
+				w.player.global_transform.origin = p + Vector3(0, 0.3, 0)
+				w.player.velocity = Vector3.ZERO
+				print("on slab ", c, " kind ", t.kind)
+				break
+	elif act == "exitinfo":
+		var lv = w.levels[w.my_sector]
+		var d = w.doors.get(lv.index)
+		print("exit locked=%s missions=%s door=%s" % [str(lv.exit_locked()), str(lv.missions), str(d != null)])
+	elif act == "bossdie":
+		var lv = w.levels[w.my_sector]
+		lv._emit("die", [1])
+		lv.mission_set("ultra", 1, 1)
+	elif act == "noattack":
+		w.levels[w.my_sector]._next_attack = 9999.0
+	elif act == "jumpdown":
+		Input.action_press("jump")
+	elif act == "jumpup":
+		Input.action_release("jump")
 	elif act == "census":
 		var counts = {}
 		_census(w, counts)
@@ -414,6 +499,13 @@ func _event(act: String) -> void:
 		keys.sort()
 		for k in keys:
 			print("  ", k, ": ", counts[k])
+
+
+func _lights(nd: Node, out: Array) -> void:
+	if nd is Light and nd.is_visible_in_tree():
+		out.append("%s@%s m%d" % [nd.get_class(), str(nd.global_transform.origin.round()), nd.light_cull_mask])
+	for c in nd.get_children():
+		_lights(c, out)
 
 
 func _census(nd: Node, counts: Dictionary) -> void:
