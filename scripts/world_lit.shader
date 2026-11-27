@@ -27,6 +27,7 @@ uniform vec3 fog_color = vec3(0.62, 0.6, 0.42);
 uniform vec4 fog = vec4(8.0, 60.0, 1.7, 1.0); // begin, end, curve, amount
 uniform bool lite = false;
 uniform bool mono = false;                // monochrome sectors: no colour on the walls at all
+uniform float photo_gain = 1.0;           // the field camera's auto exposure (the shutter frame only)
 
 varying vec3 wpos;
 varying vec3 wnrm;
@@ -137,7 +138,7 @@ void fragment() {
 	} else {
 		E = (E + ambient) * (1.0 - blackout * 0.94);
 	}
-	vec3 col = alb * E * light_tint * exposure;
+	vec3 col = alb * E * light_tint * exposure * photo_gain;
 	if (mono) {
 		col = vec3(dot(col, vec3(0.299, 0.587, 0.114)));
 	}

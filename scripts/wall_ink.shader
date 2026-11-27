@@ -11,6 +11,7 @@ uniform sampler2D lm_soft;
 uniform vec4 lm_rect;                     // origin x, origin z, 1/span, 1/span
 uniform float lm_gain = 2.0;
 uniform float exposure = 1.0;
+uniform float photo_gain = 1.0;           // the field camera's auto exposure (the shutter frame only)
 uniform vec3 light_tint = vec3(1.0, 0.95, 0.76);
 uniform float ambient = 0.05;
 uniform float wall_h = 2.75;
@@ -53,6 +54,6 @@ void fragment() {
 	E *= mix(0.72, 1.0, smoothstep(0.0, 0.3, wall_h - y));
 	E *= 1.0 - 0.45 * smoothstep(0.52, 0.85, occ);
 	E = (E + ambient) * (1.0 - blackout * 0.94);
-	ALBEDO = ink.rgb * E * light_tint * exposure;
+	ALBEDO = ink.rgb * E * light_tint * exposure * photo_gain;
 	ALPHA = a;
 }

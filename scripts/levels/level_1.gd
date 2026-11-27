@@ -273,6 +273,12 @@ func on_request(pid: int, type: String, args: Array) -> void:
 		k.enraged = true
 	_emit("key_taken", [pid])
 	mission_set("master", 1, pid)
+	# once taken the master key is gone from sight: nobody could photograph it any more and
+	# "every key" would be stuck at 3/4 for good. Holding it counts as its evidence.
+	var mi = world.enemies.find(master)
+	if mi >= 0 and not _key_shots.has(mi):
+		_key_shots[mi] = true
+		mission_set("keys", _key_shots.size(), pid)
 
 
 func net_event(type: String, args: Array) -> void:

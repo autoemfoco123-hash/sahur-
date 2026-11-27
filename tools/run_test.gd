@@ -252,6 +252,42 @@ func _event(act: String) -> void:
 	elif act.begins_with("hide"):
 		w.levels[int(act.substr(4))].geo.visible = false
 		w.set_process(false)
+	elif act == "grade":
+		print("grade ", w.photo._grade())
+	elif act == "photo":
+		w.photo.take()
+	elif act.begins_with("keyfront"):
+		# one key (keyfront1 = keys[1]) 2.6 m in front of you, facing you, held still
+		var lv = w.levels[w.my_sector]
+		var k = lv.keys[int(act.substr(8))]
+		var pl = w.player
+		var f = -pl.cam.global_transform.basis.z
+		f.y = 0
+		f = f.normalized()
+		k.dormant = 999.0
+		k.frozen = true
+		k.global_transform.origin = pl.global_transform.origin + f * 2.6
+		k.look_at(pl.global_transform.origin, Vector3.UP)
+		k.rotation.x = 0
+	elif act.begins_with("tokey"):
+		# stand 3 m from key i (as it is: not moved, not frozen), aiming the camera at its face
+		var lv = w.levels[w.my_sector]
+		var k = lv.keys[int(act.substr(5))]
+		var kp: Vector3 = k.global_transform.origin
+		var fwd = -k.global_transform.basis.z
+		fwd.y = 0
+		var side = act.find("back") < 0
+		var at = kp + (fwd.normalized() if side else -fwd.normalized()) * 3.0
+		w.player.global_transform.origin = at + Vector3(0, 0.1, 0)
+		var face = k.model.global_transform.xform(Vector3(0, k.model.get_meta("face_y"), 0))
+		var to = face - (at + Vector3(0, 1.6, 0))
+		w.player.set_look(atan2(-to.x, -to.z), atan2(to.y, Vector2(to.x, to.z).length()))
+	elif act == "keys":
+		var lv = w.levels[w.my_sector]
+		var ks = PoolStringArray()
+		for k in lv.keys:
+			ks.append("%s obs=%s dorm=%.1f pos=%s yaw=%.2f vis=%s" % ["M" if k.master else "k", str(k.observed), k.dormant, str(k.global_transform.origin.round()), k.rotation.y, str(k.model.is_visible_in_tree())])
+		print("keys ", ks.join(" | "))
 	elif act == "kill67":
 		w.kill("67", "67 took you.")
 	elif act == "gates":

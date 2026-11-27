@@ -4,6 +4,10 @@ extends Node
 ## Every shot is graded on the spot: how big the entity is in frame, how centred, whether it is
 ## looking into the lens, how steady you held it, and whether the flash reached it.
 ## The flash has consequences: Tung wakes up when it goes off in his face; it freezes the keys.
+## Like the goggles, the camera has auto gain: down here a plain exposure is black (the key
+## rooms are lit by a few dim lamps; the goggles amplify that, the film would not). So the
+## shutter frame is exposed for how dark it is (_exposure): the baked light, the ambient and the
+## haze are turned up for that one frame, then put back.
 ## Photos are points: a photo is worth how much it beats your best photo of that same brainrot
 ## (x1.5 if it was hunting when you took it). The server keeps the score.
 
@@ -55,12 +59,14 @@ func take() -> void:
 	var fov = cam.fov
 	cam.fov = LENS_FOV
 	var result = _grade()
+	_set_gain(_exposure())
 	Audio.play("shutter", -1.0, rand_range(0.97, 1.03))
 	_flash.light_energy = 7.0
 	# the frame after the flash lights it is the photo (the camera sees no hud, no post)
 	yield(get_tree(), "idle_frame")
 	yield(get_tree(), "idle_frame")
 	var img = world.get_viewport().get_texture().get_data()
+	_set_gain(1.0)
 	_flash.light_energy = 0.0
 	cam.fov = fov
 	world.flash(0.7)
@@ -90,6 +96,46 @@ func take() -> void:
 	else:
 		world.photo_scored(1, result.id, result.score, result.inst)
 	_busy = false
+
+
+## How much light the shot needs: the average brightness of the frame on screen (before the
+## goggles' post-processing), metered like the goggles do it.
+func _exposure() -> float:
+	var img = world.get_viewport().get_texture().get_data()
+	if img == null or img.is_empty():
+		return 1.0
+	img.resize(32, 18, Image.INTERPOLATE_BILINEAR)
+	img.lock()
+	var s = 0.0
+	for y in 18:
+		for x in 32:
+			var c = img.get_pixel(x, y)
+			s += c.r * 0.299 + c.g * 0.587 + c.b * 0.114
+	img.unlock()
+	return clamp(0.3 / max(s / 576.0, 0.004), 1.0, 12.0)
+
+
+var _amb0 = -1.0
+var _fog0 = Color(0, 0, 0)
+
+
+## Turn the exposure up (g > 1) for the shutter frame, or back to normal (g = 1).
+func _set_gain(g: float) -> void:
+	for lv in world.levels:
+		var b = lv.get("bake")
+		if b:
+			for m in b.mats:
+				m.set_shader_param("photo_gain", g)
+	if g > 1.0:
+		if _amb0 < 0.0:
+			_amb0 = world.env.ambient_light_energy
+			_fog0 = world._fog_base
+		world.env.ambient_light_energy = _amb0 * min(g, 6.0)
+		world._fog_base = _fog0 * min(g, 6.0)
+	elif _amb0 >= 0.0:
+		world.env.ambient_light_energy = _amb0
+		world._fog_base = _fog0
+		_amb0 = -1.0
 
 
 ## The best entity in frame, graded 0..100 at the moment the shutter opens.
