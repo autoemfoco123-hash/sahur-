@@ -58,6 +58,11 @@ var g_vec = Vector3(0, 1, 0)
 var vel_local = Vector3.ZERO
 var att_roll = 0.0
 var att_pitch = 0.0
+var waking = -1.0          # seconds into waking up on the floor (-1: awake)
+var wake_blur = 0.0        # how blurred the eyes still are (world.gd feeds the post shader)
+var _wake_yaw = 0.0
+var _wake_side = 1.0
+const WAKE_LEN = 8.2
 
 
 func _init() -> void:
@@ -205,6 +210,8 @@ func _physics_process(delta: float) -> void:
 		add_trauma(0.15)
 	_air_t = 0.0 if is_on_floor() else _air_t + delta
 	_head_motion(delta)
+	if waking >= 0.0:
+		_wake(delta)
 	trauma = max(0.0, trauma - delta * 1.2)
 	var sh = trauma * trauma
 	cam.h_offset = _noise.get_noise_2d(_t * 40.0, 0.0) * sh * 0.25
@@ -254,6 +261,74 @@ func _head_motion(delta: float) -> void:
 	rig.rotation = Vector3(bob_pitch + _sp_pos.x + br * deg2rad(0.4) + _land * 0.15, bob_yaw, _tilt + bob_roll + _sp_pos.y)
 	att_roll = rad2deg(rig.rotation.z + cam.rotation.z)
 	att_pitch = rad2deg(head.rotation.x + rig.rotation.x)
+
+
+## Wake up on the floor: lying on your back, eyes shut. The eyes flutter open on whatever is
+## above, close again, open; the head rolls to the side; you push yourself up to sitting, then,
+## a hand on the knee, onto your feet. Blurred, breathing hard. Control comes back at the end.
+func wake_up() -> void:
+	waking = 0.0
+	controls = false
+	look_enabled = false
+	_wake_yaw = _yaw
+	_wake_side = 1.0 if randf() < 0.5 else -1.0
+	wake_blur = 1.0
+	if world and world.hud:
+		world.hud.set_eyes(0.0)
+
+
+func _wake(delta: float) -> void:
+	waking += delta
+	var t = waking
+	var s = _wake_side
+	# the eyes: shut, a flutter, shut, half, a blink, open
+	var e = 0.0
+	if t > 0.7:
+		e = 0.32 * sin(clamp((t - 0.7) / 0.5, 0.0, 1.0) * PI)
+	if t > 1.5:
+		e = lerp(0.0, 0.55, smoothstep(1.5, 2.3, t))
+	if t > 2.9:
+		e = lerp(0.55, 0.12, smoothstep(2.9, 3.05, t))
+	if t > 3.05:
+		e = lerp(0.12, 0.85, smoothstep(3.05, 3.6, t))
+	if t > 5.2:
+		e = lerp(0.85, 1.0, smoothstep(5.2, 6.5, t))
+	if world and world.hud:
+		world.hud.set_eyes(e)
+	wake_blur = 1.0 - smoothstep(3.0, 7.6, t)
+	# where the eyes are: on the floor looking up; the head rolls; sit up; stand up
+	var sit = smoothstep(3.6, 5.1, t)
+	var stand = smoothstep(5.6, 7.4, t)
+	var lie_h = 0.24
+	var h = lerp(lie_h, 0.95, sit)
+	h = lerp(h, _height - 0.15, stand)
+	var look_up = 1.42 + sin(t * 0.7) * 0.05
+	var pitch = lerp(look_up, 0.22, smoothstep(3.4, 5.0, t))
+	pitch = lerp(pitch, -0.06, smoothstep(5.4, 7.2, t))
+	# lying: the head lolls to one side, then the other; sitting up you lean forward and turn
+	var roll = s * (0.35 * (1.0 - smoothstep(2.2, 3.6, t)) * smoothstep(0.6, 1.8, t))
+	roll += -s * 0.22 * sin(PI * sit) + s * 0.12 * sin(PI * stand)
+	var yaw = _wake_yaw + s * 0.55 * sin(PI * smoothstep(1.0, 3.4, t)) * (1.0 - sit) - s * 0.35 * sin(PI * smoothstep(4.6, 7.0, t))
+	# heavy breathing, a sway on the way up
+	var br = sin(t * 2.4) * 0.012 * (1.0 - stand * 0.6)
+	head.translation.y = h + br + sin(PI * stand) * 0.05
+	_yaw = yaw
+	_pitch = pitch
+	rotation.y = _yaw
+	head.rotation.x = _pitch + sin(t * 1.9) * 0.02 * (1.0 - stand)
+	rig.rotation.z += roll
+	rig.translation.x += s * 0.08 * sin(PI * sit)
+	if t > 3.6 and t - delta <= 3.6:
+		Audio.play(step_sound, step_volume + 2.0, 0.7)
+	if t > 5.6 and t - delta <= 5.6:
+		Audio.play(step_sound, step_volume + 3.0, 0.75)
+	if t >= WAKE_LEN:
+		waking = -1.0
+		wake_blur = 0.0
+		controls = true
+		look_enabled = true
+		if world and world.hud:
+			world.hud.set_eyes(1.0)
 
 
 func horizontal_speed() -> float:

@@ -51,10 +51,14 @@ func enter(_boot: bool) -> void:
 	pass
 
 
-## The goggles power up at the start of the run (whatever sector it starts in).
+## The start of the run (whatever sector it starts in): you wake up on the floor, and while you
+## get up the goggles power up.
 func boot_goggles_now() -> void:
-	get_tree().create_timer(1.0).connect("timeout", self, "_boot_1")
-	get_tree().create_timer(2.4).connect("timeout", self, "_boot_2")
+	if player():
+		player().wake_up()
+	world.hud.fade(0.0, 0.3)
+	get_tree().create_timer(2.2).connect("timeout", self, "_boot_1")
+	get_tree().create_timer(3.4).connect("timeout", self, "_boot_2")
 
 
 func _boot_1() -> void:

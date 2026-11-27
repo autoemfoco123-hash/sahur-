@@ -33,6 +33,7 @@ var _look = null    # a point to keep the eyes on (smoothly)
 var _stuck_t = 0.0
 var _stuck_at = Vector3.ZERO
 var start_sector = 0
+var bliss = false   # the bliss take: wake up in the field, the mechanism, the fall, waking up in 6-7
 var map_seed = -1
 
 
@@ -46,6 +47,9 @@ func _initialize() -> void:
 			dry = true
 		elif a.begins_with("seed="):
 			map_seed = int(a.substr(5))
+		elif a == "bliss":
+			bliss = true
+			start_sector = 2
 		elif a.begins_with("start="):
 			start_sector = int(a.substr(6))
 	Directory.new().make_dir_recursive(out)
@@ -329,6 +333,9 @@ func _nearest_first(from: Vector3, items: Array) -> Array:
 
 # ------------------------------------------------------------------ the run
 func _director():
+	if bliss:
+		yield(_bliss(), "completed")
+		return
 	yield(_wait(4.0), "completed")          # the goggles boot
 	if start_sector <= 0:
 		yield(_sector0(), "completed")
@@ -515,6 +522,52 @@ func _around(a: Vector3, b: Vector3, c: Vector3, r: float) -> Array:
 	var side = -off.normalized() if off.length() > 0.01 else Vector2(-ab.y, ab.x).normalized()
 	var p = Vector2(c.x, c.z) + side * r * 1.3
 	return [Vector3(p.x, a.y, p.y), b]
+
+
+## The bliss take: you come to in the grass, get up, look around, cross the meadow to the
+## mechanism, take its portrait and talk to it; it talks, the field tears, you fall; you come to
+## on the floor of the 6-7 maze. (The beacons were switched off before the take: the mission is
+## marked done at the start, so the take is the field, the mechanism and the fall.)
+func _bliss():
+	var w = _w()
+	var lv = w.levels[2]
+	var pl = w.player
+	lv.mission_set("beacons", 4, _net().my_id())
+	while pl.waking >= 0.0:
+		yield(self, "idle_frame")
+	yield(_wait(0.5), "completed")
+	var e = pl.eye_pos()
+	_look = e + Vector3(10.0, 3.5, -13.0)
+	yield(_wait(2.4), "completed")
+	_look = e + Vector3(10.0, 1.0, 13.0)
+	yield(_wait(2.4), "completed")
+	_look = null
+	var kp: Vector3 = lv.khaby.global_transform.origin
+	var dir = -lv.khaby.global_transform.basis.z
+	dir.y = 0
+	var at = kp + dir.normalized() * 3.8
+	_go(_around(pl.global_transform.origin, at, kp, 3.5), 0.3, 0.72)
+	yield(_until_arrived(40.0), "completed")
+	yield(_portrait(lv.khaby.model, 1.6), "completed")
+	yield(_wait(1.2), "completed")
+	lv._talk()
+	while w.my_sector == 2:
+		yield(self, "idle_frame")
+	var lv3 = w.levels[3]
+	if is_instance_valid(lv3.ss):
+		lv3.ss.frozen = true
+	yield(_wait(0.3), "completed")
+	while pl.waking >= 0.0:
+		yield(self, "idle_frame")
+	e = pl.eye_pos()
+	var f = -pl.global_transform.basis.z
+	var r = f.cross(Vector3.UP)
+	_look = e + f * 6.0 - r * 5.0 + Vector3(0, 0.3, 0)
+	yield(_wait(1.8), "completed")
+	_look = e + f * 6.0 + r * 5.0 + Vector3(0, 0.2, 0)
+	yield(_wait(1.8), "completed")
+	_look = null
+	done_t = t + 2.5
 
 
 # ------------------------------------------------------------------ sector 3: the maze

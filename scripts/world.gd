@@ -328,7 +328,7 @@ func setup_env(c: Dictionary) -> void:
 	env.ambient_light_energy = c.get("ambient_energy", 0.3)
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = c.get("exposure", 1.0)
-	env.tonemap_white = 6.0
+	env.tonemap_white = c.get("white", 6.0)
 	env.glow_enabled = true
 	env.glow_intensity = 0.9
 	env.glow_bloom = 0.08
@@ -342,6 +342,7 @@ func setup_env(c: Dictionary) -> void:
 	env.fog_depth_end = c.get("fog_end", 50.0)
 	env.fog_depth_curve = c.get("fog_curve", 1.0)
 	env.fog_height_enabled = false
+	_fog_sun(c)
 	env.adjustment_enabled = true
 	env.adjustment_contrast = c.get("contrast", 1.1)
 	env.adjustment_saturation = c.get("saturation", 0.85)
@@ -719,7 +720,7 @@ func _process(delta: float) -> void:
 		d = max(d, level.danger_bonus)
 	danger = lerp(danger, d, clamp(delta * 3.0, 0.0, 1.0))
 	if not dying and not completing:
-		Audio.set_breath(danger if danger > 0.3 else 0.0)
+		Audio.set_breath(max(danger if danger > 0.3 else 0.0, 0.7 * player.wake_blur))
 	var madness: float = clamp((60.0 - Game.brain_cells) / 60.0, 0.0, 1.0) if not my_out else 0.0
 	Audio.set_madness(madness * 0.8)
 	_flash = max(0.0, _flash - delta * 2.5)
@@ -739,8 +740,14 @@ func _process(delta: float) -> void:
 	if target.length() > 0.12:
 		target = target.normalized() * 0.12
 	_blur = _blur.linear_interpolate(target, 0.6)
+	var wb: float = player.wake_blur
+	if wb > 0.0:
+		var tw = OS.get_ticks_msec() * 0.001
+		_blur += Vector2(sin(tw * 1.3), cos(tw * 0.9)) * 0.03 * wb
+		madness = max(madness, wb * 0.55)
+		post.set_shader_param("madness", madness)
 	post.set_shader_param("blur_dir", _blur)
-	post.set_shader_param("radial", clamp(player.horizontal_speed() / 4.2, 0.0, 1.5) * 0.035)
+	post.set_shader_param("radial", clamp(player.horizontal_speed() / 4.2, 0.0, 1.5) * 0.035 + wb * 0.12)
 	var nv_target = 1.0 if player.flashlight_on else 0.0
 	_nv = move_toward(_nv, nv_target, delta * (2.5 if nv_target > _nv else 8.0))
 	var nv_show = _nv
@@ -887,7 +894,7 @@ func drop_into(s: int) -> void:
 	var fwd = Vector3(-sin(yaw), 0, -cos(yaw))
 	player.global_transform.origin = (lv.arrive_pos if arrive else lv.spawn_pos) + Vector3(0, 0.6, 0) + fwd.cross(Vector3.UP) * rand_range(-0.8, 0.8)
 	player.velocity = Vector3.ZERO
-	player.set_look(yaw, -0.5)
+	player.set_look(yaw, 0.0)
 	env_sector = s                 # no drifting over from the void: you are simply here
 	set_view(s, true)
 	setup_env(lv.env_cfg)
@@ -895,13 +902,13 @@ func drop_into(s: int) -> void:
 	if not Net.active() and not lv.wave_started:
 		lv.start_wave()
 	Audio.play("land_thud", 0.0)
-	player.add_trauma(0.9)
-	flash(0.5)
+	# you come to on the floor (the fall knocked you out)
+	player.wake_up()
 	if hud:
 		hud.fade_rect.color = Color(0, 0, 0, 1)
-		hud.fade(0.0, 1.6)
+		hud.fade(0.0, 0.4)
 	var info: Dictionary = Game.INFO.get(Game.LEVELS[s], {})
-	get_tree().create_timer(1.2).connect("timeout", self, "_title", [info])
+	get_tree().create_timer(8.0).connect("timeout", self, "_title", [info])
 
 
 ## You walked through a door into sector s.
@@ -1003,6 +1010,20 @@ func _greeter_frame(delta: float) -> void:
 		_greeter_gone = 0.0
 
 
+## Sunlit haze (looking toward the sun the distance glows warm) and the far distance a little
+## soft (high quality only), for the sectors that have a sky.
+func _fog_sun(c: Dictionary) -> void:
+	env.fog_sun_color = c.get("fog_sun_color", Color(0, 0, 0))
+	env.fog_sun_amount = c.get("fog_sun_amount", 0.0)
+	var dof = c.has("dof_far") and int(Game.settings.gfx) >= 2
+	env.dof_blur_far_enabled = dof
+	if dof:
+		env.dof_blur_far_distance = c.dof_far
+		env.dof_blur_far_transition = 80.0
+		env.dof_blur_far_amount = 0.06
+		env.dof_blur_far_quality = Environment.DOF_BLUR_QUALITY_LOW
+
+
 ## Monochrome sectors: danger darkens instead of reddening, almost no colour fringes.
 func _post_look(c: Dictionary) -> void:
 	if post:
@@ -1090,6 +1111,9 @@ func _blend_env(c: Dictionary, dur: float) -> void:
 	tw.tween_property(env, "adjustment_contrast", c.get("contrast", 1.1), dur)
 	tw.tween_property(env, "adjustment_saturation", c.get("saturation", 0.85), dur)
 	tw.tween_property(self, "_fog_base", c.get("fog_color", Color(0.02, 0.02, 0.02)), dur)
+	tw.tween_property(env, "tonemap_exposure", c.get("exposure", 1.0), dur)
+	env.tonemap_white = c.get("white", 6.0)
+	_fog_sun(c)
 	_post_look(c)
 	var t0: Vector3 = get_meta("tint") if has_meta("tint") else Vector3(1, 1, 1)
 	var t1: Vector3 = c.get("tint", Vector3(1.0, 0.97, 0.92))
@@ -1142,6 +1166,7 @@ func revive_local(s: int) -> void:
 	hud.fade(0.0, 1.4)
 	set_view(s, true)
 	_post_look(level.env_cfg)
+	player.wake_up()
 	var info: Dictionary = Game.INFO.get(Game.LEVELS[s], {})
 	hud.subtitle("hush pulled you back in.   %s · %s." % [info.get("title", ""), info.get("name", "")], 4.5)
 	Audio.play("nv_on", -4.0)

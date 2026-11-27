@@ -18,6 +18,7 @@ var death_root: ColorRect
 var death_big: Label
 var death_small: Label
 var fade_rect: ColorRect
+var eyes: ColorRect         # eyelids (waking up)
 var pause_root: ColorRect
 var pause_menu: Control
 var settings
@@ -397,6 +398,14 @@ func _ready() -> void:
 	death_small.autowrap = true
 	death_root.add_child(death_small)
 
+	eyes = ColorRect.new()
+	UI.full_rect(eyes)
+	eyes.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var em = ShaderMaterial.new()
+	em.shader = load("res://scripts/eyelids.shader")
+	eyes.material = em
+	eyes.visible = false
+	root.add_child(eyes)
 	fade_rect = ColorRect.new()
 	UI.full_rect(fade_rect)
 	fade_rect.color = Color(0, 0, 0, 1)
@@ -624,6 +633,8 @@ func set_points(total: int, gain := 0, why := "") -> void:
 
 ## Cutscene framing: black bars slide in, the widgets step aside.
 func cinematic(on: bool) -> void:
+	if not on and _cine_label:
+		_cine_label.text = ""
 	if _bars.empty():
 		for top in [true, false]:
 			var b = ColorRect.new()
@@ -752,6 +763,12 @@ func death(big: String, small: String, color := UI.WHITE) -> void:
 	var tw = create_tween()
 	tw.tween_property(death_big, "modulate:a", 1.0, 1.2)
 	tw.tween_property(death_small, "modulate:a", 1.0, 1.0)
+
+
+## Eyelids: 0 shut .. 1 open.
+func set_eyes(open: float) -> void:
+	eyes.visible = open < 0.995
+	eyes.material.set_shader_param("open", open)
 
 
 func fade(to: float, dur: float):

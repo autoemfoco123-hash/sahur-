@@ -131,8 +131,7 @@ func enter(boot: bool) -> void:
 		player().step_volume = -16.0
 		world.set_dust(500)
 	if boot:
-		get_tree().create_timer(1.0).connect("timeout", self, "_boot_1")
-		get_tree().create_timer(2.4).connect("timeout", self, "_boot_2")
+		boot_goggles_now()
 
 
 func start_wave() -> void:

@@ -119,8 +119,7 @@ func enter(boot: bool) -> void:
 		player().step_volume = -18.0
 		world.set_dust(350)
 	if boot:
-		get_tree().create_timer(1.0).connect("timeout", self, "_boot_1")
-		get_tree().create_timer(2.4).connect("timeout", self, "_boot_2")
+		boot_goggles_now()
 
 
 ## Somebody came through the door: the keys wake up, one after another.
