@@ -75,6 +75,7 @@ func build() -> void:
 	boot_goggles = true
 	greeter = ""
 	has_exit_door = false
+	revive_wakes = false
 	ending_text = "the ground opened and you fell.\n\nthe void carried you somewhere else.\nhush lost your signal in sector 2."
 	zc = entry_z if has_entry else 24.0
 	entry_z = zc

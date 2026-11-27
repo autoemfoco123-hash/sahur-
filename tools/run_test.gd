@@ -310,6 +310,11 @@ func _event(act: String) -> void:
 		for k in lv.keys:
 			ks.append("%s obs=%s frz=%s dorm=%.0f d=%.2f" % ["M" if k.master else "k", str(k.observed), str(k.frozen), k.dormant, Vector2(k.global_transform.origin.x - w.player.global_transform.origin.x, k.global_transform.origin.z - w.player.global_transform.origin.z).length()])
 		print("obs ", ks.join(" | "), " stare=", lv._stare, " wave=", lv.wave_started, " targets=", w.targets(lv.index).size())
+	elif act.begins_with("revive"):
+		w.revive_local(int(act.substr(6)))
+	elif act == "wakeinfo":
+		var pl = w.player
+		print("wake: sector=%d waking=%.2f blur=%.2f eyes_visible=%s cam_h=%.2f pitch=%.2f controls=%s" % [w.my_sector, pl.waking, pl.wake_blur, str(w.hud.eyes.visible), pl.head.translation.y, pl.head.rotation.x, str(pl.controls)])
 	elif act == "kill67":
 		w.kill("67", "67 took you.")
 	elif act == "gates":

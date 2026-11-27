@@ -1166,7 +1166,8 @@ func revive_local(s: int) -> void:
 	hud.fade(0.0, 1.4)
 	set_view(s, true)
 	_post_look(level.env_cfg)
-	player.wake_up()
+	if lv.revive_wakes:
+		player.wake_up()
 	var info: Dictionary = Game.INFO.get(Game.LEVELS[s], {})
 	hud.subtitle("hush pulled you back in.   %s · %s." % [info.get("title", ""), info.get("name", "")], 4.5)
 	Audio.play("nv_on", -4.0)
