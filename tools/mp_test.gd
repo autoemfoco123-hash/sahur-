@@ -217,6 +217,21 @@ func _event(act: String) -> void:
 	elif act == "freeze":
 		for e in w.get_tree().get_nodes_in_group("hostile"):
 			e.frozen = true
+	elif act == "gates":
+		var lv = w.levels[3]
+		var gs = PoolStringArray()
+		for g in lv.gates:
+			gs.append("%d:%.1f" % [g.n, g.open])
+		var p67 = lv.ss.global_transform.origin.round() if is_instance_valid(lv.ss) else Vector3.ZERO
+		print("[", pname, "] gates layout=%d %s 67=%s state=%d calls=%s" % [lv.layout, gs.join(" "), str(p67), lv.ss.state, str(lv.mission_progress("calls"))])
+	elif act.begins_with("num"):
+		# walk into a number's dead end (gates or not) and take it
+		var lv = w.levels[3]
+		var n = int(act.substr(3))
+		w.player.global_transform.origin = lv.numerals[n].pos + Vector3(0.6, 0.1, 0.6)
+		lv._take_num(n)
+	elif act == "freeze67":
+		w.levels[3].ss.frozen = true
 
 
 func Game_kill(w) -> void:

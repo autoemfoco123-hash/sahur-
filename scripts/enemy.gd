@@ -27,6 +27,8 @@ var chase_player: AudioStreamPlayer3D
 var aggro_target = 0.0
 var aggro = 0.0
 var pinned = false          # held where it is (no gravity, no moving), still animated
+var floats = false          # drifts at hover_y (world y), no gravity, nothing under it needed
+var hover_y = 0.0
 var kill_t = -1.0           # seconds into the kill animation (-1: not killing)
 var kill_at = Vector3.ZERO  # where the victim stands
 var kill_hit = 0.42         # when the blow lands (the body flies then)
@@ -133,7 +135,10 @@ func _physics_process(delta: float) -> void:
 	var hv = Vector3(velocity.x, 0, velocity.z).linear_interpolate(want, clamp(delta * 10.0, 0.0, 1.0))
 	velocity.x = hv.x
 	velocity.z = hv.z
-	velocity.y = velocity.y - 20.0 * delta if not is_on_floor() else -0.5
+	if floats:
+		velocity.y = (hover_y - global_transform.origin.y) * 4.0
+	else:
+		velocity.y = velocity.y - 20.0 * delta if not is_on_floor() else -0.5
 	velocity = move_and_slide(velocity, Vector3.UP)
 	_animate(delta, hv.length())
 	_flick -= delta

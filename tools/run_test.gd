@@ -197,6 +197,69 @@ func _event(act: String) -> void:
 		# look: yaw degrees , pitch degrees  e.g. look30_10
 		var parts = act.substr(4).split("_")
 		w.player.set_look(deg2rad(float(parts[0])), deg2rad(float(parts[1])) if parts.size() > 1 else 0.0)
+	elif act.begins_with("to67"):
+		# 67 parked in front of you, facing you (to674 = 4 m away), frozen
+		var lv = w.levels[w.my_sector]
+		var pl = w.player
+		var f = -pl.cam.global_transform.basis.z
+		f.y = 0
+		f = f.normalized()
+		var dist = float(act.substr(4)) if act.length() > 4 else 5.0
+		lv.ss.frozen = true
+		lv.ss.dormant = 999.0
+		lv.ss.relocate(pl.global_transform.origin + f * dist + Vector3(0, 0.1, 0))
+		lv.ss.look_at(pl.global_transform.origin + Vector3(0, 0.1, 0), Vector3.UP)
+		lv.ss.rotation.x = 0
+	elif act.begins_with("call"):
+		# 67 calls a number now (call6 / call7), it stays where it is
+		var lv = w.levels[w.my_sector]
+		lv._emit("call", [int(act.substr(4)), lv.ss.global_transform.origin])
+	elif act.begins_with("togate"):
+		# 3 m from gate i, facing it
+		var lv = w.levels[w.my_sector]
+		var g = lv.gates[int(act.substr(6))]
+		var nrm = Vector3(0, 0, 1) if g.along_x else Vector3(1, 0, 0)
+		w.player.global_transform.origin = g.pos + nrm * 3.0 + Vector3(0, 0.1, 0)
+		w.player.set_look(atan2(nrm.x, nrm.z), 0.0)
+		print("gate %d n=%d open=%.2f want=%.2f layout=%d" % [int(act.substr(6)), g.n, g.open, g.want, lv.layout])
+	elif act.begins_with("ingate"):
+		# standing right in gate i
+		var lv = w.levels[w.my_sector]
+		var g = lv.gates[int(act.substr(6))]
+		w.player.global_transform.origin = g.pos + Vector3(0, 0.1, 0)
+	elif act.begins_with("tonum"):
+		var lv = w.levels[w.my_sector]
+		var n = int(act.substr(5))
+		var p: Vector3 = lv.numerals[n].pos
+		var c: Vector2 = lv.numerals[n].cell
+		var at = p
+		for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+			if lv._passable(c, c + d):
+				at = p + Vector3(d.x, 0, d.y) * 1.6
+		w.player.global_transform.origin = at + Vector3(0, 0.1, 0)
+		var to = p + Vector3(0, 1.0, 0) - (at + Vector3(0, 1.6, 0))
+		w.player.set_look(atan2(-to.x, -to.z), atan2(to.y, Vector2(to.x, to.z).length()))
+	elif act.begins_with("takenum"):
+		w.levels[w.my_sector]._take_num(int(act.substr(7)))
+	elif act == "pos":
+		var lv = w.levels[w.my_sector]
+		print("pos %s gate0 %s open=%.2f" % [str(w.player.global_transform.origin), str(lv.gates[0].pos) if lv.get("gates") else "", lv.gates[0].open if lv.get("gates") else -1.0])
+	elif act == "visall":
+		var vv = PoolStringArray()
+		for lv in w.levels:
+			vv.append("%d:%s" % [lv.index, str(lv.geo.visible)])
+		print("visall ", vv.join(" "), " cam=", str(w.player.cam.global_transform.origin.round()))
+	elif act.begins_with("hide"):
+		w.levels[int(act.substr(4))].geo.visible = false
+		w.set_process(false)
+	elif act == "kill67":
+		w.kill("67", "67 took you.")
+	elif act == "gates":
+		var lv = w.levels[w.my_sector]
+		var gs = PoolStringArray()
+		for g in lv.gates:
+			gs.append("%d:%.1f" % [g.n, g.open])
+		print("gates layout=%d %s nums=%s" % [lv.layout, gs.join(" "), str(lv.numerals.keys())])
 	elif act == "grabmaster":
 		var lv = w.levels[1]
 		w.player.global_transform.origin = lv.master.global_transform.origin + Vector3(1.4, 0.1, 0)

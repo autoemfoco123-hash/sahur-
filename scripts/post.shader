@@ -20,6 +20,8 @@ uniform float nv = 0.0;
 uniform float nv_gain = 22.0;
 uniform bool cheap = false;
 uniform float ca_amount = 1.0;      // chromatic aberration (0 = none)
+uniform float invert = 0.0;         // the world in negative (a 67 call)
+uniform float danger_red = 1.0;     // 0 in the monochrome sectors: danger darkens, never reddens
 
 float rnd(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -100,9 +102,10 @@ void fragment() {
 
 	float vig = 1.0 - smoothstep(0.3 - danger * 0.15, 0.95, length((SCREEN_UV - 0.5) * vec2(aspect * 0.75, 1.0)) * (1.0 + pulse * 0.08));
 	col *= mix(1.0, vig, (0.45 + danger * 0.4) * k);
-	col = mix(col, col * vec3(1.0, 0.25, 0.2), danger * 0.2 * (1.0 - vig) * k);
+	col = mix(col, col * mix(vec3(0.45), vec3(1.0, 0.25, 0.2), danger_red), danger * 0.2 * (1.0 - vig) * k);
 	col += (rnd(SCREEN_UV * res + fract(t * 7.13) * 100.0) - 0.5) * (grain + madness * 0.08) * k;
 	col = mix(col, vec3(0.9, 0.9, 0.88), flash * 0.5);
+	col = mix(col, vec3(1.0) - col, invert);
 	col = mix(col, vec3(0.0), fade);
 	COLOR = vec4(col, 1.0);
 }

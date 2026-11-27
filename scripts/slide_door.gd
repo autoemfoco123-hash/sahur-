@@ -25,6 +25,7 @@ var _panel_t = 0.0
 var _front_light: SpatialMaterial
 var _back_light: SpatialMaterial
 var _use                       # the [E] spot (only usable from the front)
+var mono = false               # in a monochrome sector: greys, no signal colours
 
 
 func setup(w, at: Vector3, from_s: int, to_s: int, wall_depth: float) -> void:
@@ -32,6 +33,7 @@ func setup(w, at: Vector3, from_s: int, to_s: int, wall_depth: float) -> void:
 	from_sector = from_s
 	to_sector = to_s
 	depth = wall_depth
+	mono = from_s < w.levels.size() and w.levels[from_s].mono
 	name = "Door%d" % from_s
 	w.add_child(self)
 	global_transform.origin = at
@@ -64,7 +66,7 @@ func deny() -> void:
 	Audio.play_at("door_deny", global_transform.origin + Vector3(-depth * 0.5, 1.2, W * 0.5 + 0.32), world, 0.0, 1.0, 20.0)
 	_panel_t = 0.6
 	if _front_light:
-		_front_light.albedo_color = Color(1.0, 0.08, 0.05)
+		_front_light.albedo_color = _c(Color(1.0, 0.08, 0.05))
 
 
 func _process(delta: float) -> void:
@@ -87,11 +89,11 @@ func _process(delta: float) -> void:
 	if _panel_t <= 0.0 and _front_light:
 		_panel_t = 0.3
 		if want_open:
-			_front_light.albedo_color = Color(0.25, 1.0, 0.45)
+			_front_light.albedo_color = _c(Color(0.25, 1.0, 0.45))
 		elif locked():
-			_front_light.albedo_color = Color(1.0, 0.45, 0.05)
+			_front_light.albedo_color = _c(Color(1.0, 0.45, 0.05))
 		else:
-			_front_light.albedo_color = Color(0.35, 0.85, 1.0)
+			_front_light.albedo_color = _c(Color(0.35, 0.85, 1.0))
 
 
 ## Nobody gets cut in half: stay open while an operative stands in the doorway.
@@ -146,7 +148,7 @@ func _build() -> void:
 		_box(slab, Vector3(SLAB_T + 0.02, WIN, 0.025), Vector3(0, WIN_Y, s * (WIN * 0.5 + 0.0125)), dark)
 	var glass = SpatialMaterial.new()
 	glass.flags_transparent = true
-	glass.albedo_color = Color(0.62, 0.74, 0.78, 0.16)
+	glass.albedo_color = _c(Color(0.62, 0.74, 0.78, 0.16))
 	glass.roughness = 0.05
 	glass.metallic = 0.4
 	glass.params_cull_mode = SpatialMaterial.CULL_DISABLED
@@ -169,22 +171,30 @@ func _build() -> void:
 			_box(self, Vector3(0.024, DH + 0.1, 0.08), Vector3(fx, (DH + 0.1) * 0.5, zs * (W * 0.5 + 0.04)), dark)
 		_box(self, Vector3(0.024, 0.09, W + 0.16), Vector3(fx, DH + 0.045, 0), dark)
 	# keypad panels: front (blue = ready, amber = locked, green = open) and back (always red)
-	_front_light = _panel(-1.0, Color(0.35, 0.85, 1.0))
-	_back_light = _panel(1.0, Color(1.0, 0.08, 0.05))
+	_front_light = _panel(-1.0, _c(Color(0.35, 0.85, 1.0)))
+	_back_light = _panel(1.0, _c(Color(1.0, 0.08, 0.05)))
 	# a sign above the door, both sides
 	var nxt = "exit" if to_sector < 0 else Game.INFO.get(Game.LEVELS[to_sector], {}).get("title", "")
 	var here = Game.INFO.get(Game.LEVELS[from_sector], {}).get("title", "")
-	Geo.label3d(self, nxt, Vector3(-depth * 0.5 - 0.03, DH + 0.32, 0), 40, Color(0.55, 1.0, 0.6) if to_sector < 0 else Color(1.0, 0.78, 0.3), -PI * 0.5)
+	Geo.label3d(self, nxt, Vector3(-depth * 0.5 - 0.03, DH + 0.32, 0), 40, _c(Color(0.55, 1.0, 0.6)) if to_sector < 0 else _c(Color(1.0, 0.78, 0.3)), -PI * 0.5)
 	Geo.label3d(self, here, Vector3(depth * 0.5 + 0.03, DH + 0.32, 0), 40, Color(1, 1, 1, 0.45), PI * 0.5)
 	# a cold light over each side so the steel reads
 	for s in [-1.0, 1.0]:
-		var l = Geo.omni(self, Vector3(s * (depth * 0.5 + 0.7), DH + 0.25, 0), Color(0.85, 0.92, 1.0), 1.1, 3.5)
+		var l = Geo.omni(self, Vector3(s * (depth * 0.5 + 0.7), DH + 0.25, 0), _c(Color(0.85, 0.92, 1.0)), 1.1, 3.5)
 		l.light_cull_mask = Geo.VIS_ACTOR
 		l.add_to_group("lamp")
 	Models.set_layers(self, 1 | Geo.VIS_ACTOR)
 	if world.player:
 		var at = global_transform.origin + Vector3(-depth * 0.5 - 0.45, 1.25, 0)
 		_use = Interactable.make(self, at, 0.7, "open the door", world, "door_use", [self], false)
+
+
+## Colour, or its grey in a monochrome sector.
+func _c(col: Color) -> Color:
+	if not mono:
+		return col
+	var l = col.r * 0.3 + col.g * 0.59 + col.b * 0.11
+	return Color(l, l, l, col.a)
 
 
 func _panel(side: float, col: Color) -> SpatialMaterial:

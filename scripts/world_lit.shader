@@ -26,6 +26,7 @@ uniform vec4 actor;                       // a brainrot's own top light: x, z, i
 uniform vec3 fog_color = vec3(0.62, 0.6, 0.42);
 uniform vec4 fog = vec4(8.0, 60.0, 1.7, 1.0); // begin, end, curve, amount
 uniform bool lite = false;
+uniform bool mono = false;                // monochrome sectors: no colour on the walls at all
 
 varying vec3 wpos;
 varying vec3 wnrm;
@@ -137,6 +138,9 @@ void fragment() {
 		E = (E + ambient) * (1.0 - blackout * 0.94);
 	}
 	vec3 col = alb * E * light_tint * exposure;
+	if (mono) {
+		col = vec3(dot(col, vec3(0.299, 0.587, 0.114)));
+	}
 	// distance haze
 	float fd = length(VERTEX);
 	float f = pow(clamp((fd - fog.x) / (fog.y - fog.x), 0.0, 1.0), fog.z) * fog.w;

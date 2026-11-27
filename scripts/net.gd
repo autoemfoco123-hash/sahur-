@@ -444,6 +444,22 @@ remote func _ev(type: String, args: Array) -> void:
 		_check_round_end()
 
 
+## Server: operative id moves on into sector `to` (through its door, or the void drops them in).
+func advance_to(id: int, to: int) -> void:
+	if not players.has(id) or to >= Game.LEVELS.size():
+		return
+	if to > wave:
+		# a new wave: the sector wakes up, and hush sends the dead back in
+		wave = to
+		event("wave", [to])
+		for pid in round_ids():
+			if not players[pid].alive and not players[pid].escaped:
+				_log("%s revived in sector %d" % [players[pid].name, to])
+				event("revived", [pid, to])
+	_log("%s → sector %d (wave %d)" % [players[id].name, to, wave])
+	event("advanced", [id, to])
+
+
 ## Client -> server requests.
 func request(type: String, args := []) -> void:
 	if not active():
@@ -496,17 +512,7 @@ func _handle(id: int, type: String, args: Array) -> void:
 			var locked = lv and lv.has_method("exit_locked") and lv.exit_locked()
 			if not p.alive or p.escaped or locked or from != int(p.sector) or from >= last:
 				return
-			var to = from + 1
-			if to > wave:
-				# a new wave: the sector wakes up, and hush sends the dead back in
-				wave = to
-				event("wave", [to])
-				for pid in round_ids():
-					if not players[pid].alive and not players[pid].escaped:
-						_log("%s revived in sector %d" % [players[pid].name, to])
-						event("revived", [pid, to])
-			_log("%s → sector %d (wave %d)" % [p.name, to, wave])
-			event("advanced", [id, to])
+			advance_to(id, from + 1)
 		"escaped":
 			var locked = lv and lv.has_method("exit_locked") and lv.exit_locked()
 			if p.alive and not p.escaped and not locked and int(p.sector) >= last:

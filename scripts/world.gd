@@ -55,6 +55,7 @@ var _scare = 0            # jumpscare phase: 0 none · 1 dark silence · 2 screa
 var _scare_t = 0.0
 var _scare_m: Spatial
 var _scare_mouth: MeshInstance
+var _scare_hands = []
 var _scare_base = Vector3.ZERO
 var _mouth_closed = Vector3.ONE
 var _mouth_open = Vector3.ONE
@@ -139,7 +140,7 @@ func _setup() -> void:
 		# each sector's west wall stands right against the previous sector's east wall,
 		# and its entrance lines up with the previous exit
 		lv.origin = Vector3(x, 0, 0)
-		if i > 0:
+		if i > 0 and levels[i - 1].has_exit_door:
 			lv.has_entry = true
 			lv.entry_z = levels[i - 1].exit_z
 		lv.geo = Spatial.new()
@@ -347,6 +348,7 @@ func setup_env(c: Dictionary) -> void:
 	if post:
 		post.set_shader_param("tint", c.get("tint", Vector3(1.0, 0.97, 0.92)))
 	set_meta("tint", c.get("tint", Vector3(1.0, 0.97, 0.92)))
+	_post_look(c)
 
 
 ## 0 potato (half resolution, few lights, no shadows) · 1 low · 2 high
@@ -619,7 +621,9 @@ func net_event(type: String, args: Array) -> void:
 		"advanced":
 			var pid: int = args[0]
 			var s: int = args[1]
-			if pid != me and hud and player and view_sector == s - 1 and not dying:
+			if pid == me and player and my_sector < s:
+				drop_into(s)      # it was not a door: the void let go of you
+			elif pid != me and hud and player and view_sector == s - 1 and not dying:
 				var info: Dictionary = Game.INFO.get(Game.LEVELS[s], {})
 				hud.subtitle("%s went through to %s." % [Net.pname(pid), info.get("name", "")], 3.5)
 		"door":
@@ -812,6 +816,8 @@ func _build_way_out(d) -> void:
 	var hh = 2.5
 	var mat = null if headless else Mats.std(Color(0.2, 0.2, 0.19), 0.9)
 	var show = not headless
+	var mono = levels[-1].mono         # no green in a monochrome sector either
+	var sign_col = Color(0.9, 0.9, 0.9) if mono else Color(0.4, 1.0, 0.5)
 	Geo.solid(self, Vector3(L + 0.2, 0.2, hw * 2.0 + 0.4), Vector3(x0 + L * 0.5, o.y - 0.1, o.z), mat, null, show)
 	Geo.solid(self, Vector3(L + 0.2, 0.2, hw * 2.0 + 0.4), Vector3(x0 + L * 0.5, o.y + hh + 0.1, o.z), mat, null, show)
 	for s in [-1.0, 1.0]:
@@ -829,10 +835,10 @@ func _build_way_out(d) -> void:
 	a.global_transform.origin = Vector3(x0 + 1.5, o.y + 1.2, o.z)
 	a.connect("body_entered", self, "_on_way_out")
 	if show:
-		Geo.label3d(self, "exit", Vector3(x0 + L - 0.02, o.y + 2.0, o.z), 64, Color(0.4, 1.0, 0.5), -PI * 0.5)
-		var g = Models.part(self, Models.box(Vector3(0.03, 0.16, 0.5)), Mats.glow(Color(0.3, 1.0, 0.45), 3.0), Vector3(x0 + L - 0.02, o.y + 2.32, o.z))
+		Geo.label3d(self, "exit", Vector3(x0 + L - 0.02, o.y + 2.0, o.z), 64, sign_col, -PI * 0.5)
+		var g = Models.part(self, Models.box(Vector3(0.03, 0.16, 0.5)), Mats.glow(Color(0.9, 0.9, 0.9) if mono else Color(0.3, 1.0, 0.45), 3.0), Vector3(x0 + L - 0.02, o.y + 2.32, o.z))
 		g.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
-		var l = Geo.omni(self, Vector3(x0 + L - 0.7, o.y + 2.2, o.z), Color(0.45, 1.0, 0.55), 1.5, 5.5)
+		var l = Geo.omni(self, Vector3(x0 + L - 0.7, o.y + 2.2, o.z), Color(1, 1, 1) if mono else Color(0.45, 1.0, 0.55), 1.5, 5.5)
 		l.add_to_group("lamp")
 
 
@@ -864,6 +870,38 @@ func door_use(door) -> void:
 		Net.request("door", [door.from_sector])
 	else:
 		door.open()
+
+
+## The void let go of you: you fall into sector s (no door), onto its arrival spot.
+func drop_into(s: int) -> void:
+	if player == null or my_out or s < 0 or s >= levels.size():
+		return
+	my_sector = s
+	for lv in levels:
+		if lv.has_method("left_void"):
+			lv.left_void()
+	cinematic(false)
+	var lv = levels[s]
+	var arrive = lv.arrive_pos != Vector3.INF
+	var yaw = lv.arrive_yaw if arrive else lv.spawn_yaw
+	var fwd = Vector3(-sin(yaw), 0, -cos(yaw))
+	player.global_transform.origin = (lv.arrive_pos if arrive else lv.spawn_pos) + Vector3(0, 0.6, 0) + fwd.cross(Vector3.UP) * rand_range(-0.8, 0.8)
+	player.velocity = Vector3.ZERO
+	player.set_look(yaw, -0.5)
+	env_sector = s                 # no drifting over from the void: you are simply here
+	set_view(s, true)
+	setup_env(lv.env_cfg)
+	_update_sun()
+	if not Net.active() and not lv.wave_started:
+		lv.start_wave()
+	Audio.play("land_thud", 0.0)
+	player.add_trauma(0.9)
+	flash(0.5)
+	if hud:
+		hud.fade_rect.color = Color(0, 0, 0, 1)
+		hud.fade(0.0, 1.6)
+	var info: Dictionary = Game.INFO.get(Game.LEVELS[s], {})
+	get_tree().create_timer(1.2).connect("timeout", self, "_title", [info])
 
 
 ## You walked through a door into sector s.
@@ -965,6 +1003,14 @@ func _greeter_frame(delta: float) -> void:
 		_greeter_gone = 0.0
 
 
+## Monochrome sectors: danger darkens instead of reddening, almost no colour fringes.
+func _post_look(c: Dictionary) -> void:
+	if post:
+		var mono = c.get("mono", false)
+		post.set_shader_param("danger_red", 0.0 if mono else 1.0)
+		post.set_shader_param("ca_amount", 0.2 if mono else 1.0)
+
+
 ## A sector's background: its own sky (an equirectangular panorama) or a flat colour.
 func _set_background(c: Dictionary) -> void:
 	if c.has("sky") and not headless:
@@ -1044,6 +1090,7 @@ func _blend_env(c: Dictionary, dur: float) -> void:
 	tw.tween_property(env, "adjustment_contrast", c.get("contrast", 1.1), dur)
 	tw.tween_property(env, "adjustment_saturation", c.get("saturation", 0.85), dur)
 	tw.tween_property(self, "_fog_base", c.get("fog_color", Color(0.02, 0.02, 0.02)), dur)
+	_post_look(c)
 	var t0: Vector3 = get_meta("tint") if has_meta("tint") else Vector3(1, 1, 1)
 	var t1: Vector3 = c.get("tint", Vector3(1.0, 0.97, 0.92))
 	tw.tween_method(self, "_set_tint", t0, t1, dur)
@@ -1094,6 +1141,7 @@ func revive_local(s: int) -> void:
 	hud.fade_rect.color = Color(0, 0, 0, 1)
 	hud.fade(0.0, 1.4)
 	set_view(s, true)
+	_post_look(level.env_cfg)
 	var info: Dictionary = Game.INFO.get(Game.LEVELS[s], {})
 	hud.subtitle("hush pulled you back in.   %s · %s." % [info.get("title", ""), info.get("name", "")], 4.5)
 	Audio.play("nv_on", -4.0)
@@ -1133,8 +1181,22 @@ func kill(_id: String, msg: String) -> void:
 	_rig = Spatial.new()
 	player.cam.add_child(_rig)
 	var m: Spatial
-	_scare_sound = "scare_keys" if _id == "keys" else "scare_scream"
-	if _id == "keys":
+	_scare_sound = {"keys": "scare_keys", "67": "scare_67"}.get(_id, "scare_scream")
+	_scare_hands = []
+	if _id == "67":
+		var SM = load("res://scripts/sixseven_model.gd")
+		m = SM.build()
+		_rig.add_child(m)
+		m.rotation.y = PI
+		# the flat screaming face from the image fills the view, eyes to mouth; the hands close in
+		_scare_base = Vector3(0, -0.02, -0.78) - Vector3(0, SM.HEAD_Y, 0)
+		_scare_mouth = null
+		for n in ["handL", "handR"]:
+			var h = m.find_node(n, true, false)
+			if h:
+				_scare_hands.append(h)
+		post.set_shader_param("ca_amount", 0.0)
+	elif _id == "keys":
 		m = load("res://scripts/keys_model.gd").build()
 		_rig.add_child(m)
 		m.rotation.y = PI
@@ -1216,6 +1278,7 @@ func _scare_cut() -> void:
 		_my_corpse.visible = true
 	hud.fade_rect.color = Color(0, 0, 0, 1)
 	Audio.silence_all(true)
+	post.set_shader_param("invert", 0.0)
 	if is_instance_valid(_rig):
 		_rig.queue_free()
 
@@ -1235,6 +1298,16 @@ func _scare_frame(delta: float) -> void:
 	if is_instance_valid(_scare_mouth):
 		open = 1.0 - (1.0 - open) * (1.0 - open)
 		_scare_mouth.set_open(open * (0.9 + 0.1 * sin(_scare_t * 41.0)), sin(_scare_t * 57.0))
+	# 67: its hands slam shut around you, the picture flips negative twice a second
+	for i in _scare_hands.size():
+		var h: Spatial = _scare_hands[i]
+		if is_instance_valid(h):
+			var side = 1.0 if i == 0 else -1.0
+			var kh = clamp((_scare_t - 0.05) / 0.25, 0.0, 1.0)
+			h.translation = Vector3(side * lerp(1.3, 0.5, kh), lerp(1.15, 1.3, kh), lerp(0.02, -0.3, kh))
+			h.rotation = Vector3(0, 0, side * (0.5 * kh + sin(_scare_t * 47.0 + i) * 0.06))
+	if not _scare_hands.empty():
+		post.set_shader_param("invert", 1.0 if fmod(_scare_t, 0.5) < 0.07 else 0.0)
 	player.add_trauma(delta * 6.0)
 	post.set_shader_param("madness", 1.0)
 	post.set_shader_param("danger", 1.0)

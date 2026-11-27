@@ -34,6 +34,7 @@ var entry_z = 0.0           # ...at this world z
 var exit_z = 0.0            # world z of the exit door in the east wall
 var geo: Spatial            # this sector's static meshes
 var has_exit_door = true    # false: this sector ends some other way (world.gd builds no door)
+var mono = false            # monochrome sector: only the operatives keep their colour
 var ending_text = ""        # what you read when the run ends here
 var chalk = Color(0.9, 1.0, 0.9)   # colour of the hush marks on walls and floors
 var wall_blockers = []      # spots on walls taken by something (hotel doors): no writing there

@@ -133,6 +133,8 @@ func surface(kind: int, tex: String, scale: float, wall_h: float, env: Environme
 		m.set_shader_param("exposure", opts.exposure)
 	if opts.has("ambient"):
 		m.set_shader_param("ambient", opts.ambient)
+	if opts.has("mono"):
+		m.set_shader_param("mono", opts.mono)
 	return register(m)
 
 

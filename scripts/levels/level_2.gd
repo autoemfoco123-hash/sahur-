@@ -474,12 +474,19 @@ func _physics_process(delta: float) -> void:
 			_check_gather()
 	if scene_t >= END and _phase < 3:
 		_phase = 3
-		# the void lets go: everyone who fell is out of the run
+		var nxt = index + 1 < world.levels.size()
+		# the void lets go: everyone who fell lands in the next sector (or is out of the run)
 		if Net.active():
 			for t in world.targets(index):
-				Net.event("escaped", [t.id])
+				if nxt:
+					Net.advance_to(t.id, index + 1)
+				else:
+					Net.event("escaped", [t.id])
 		elif world.player and not world.dying and world.my_sector == index:
-			world.complete()
+			if nxt:
+				world.drop_into(index + 1)
+			else:
+				world.complete()
 
 
 # ------------------------------------------------------------------ every machine
@@ -679,6 +686,13 @@ func _tear(c: float, delta: float) -> void:
 		player().add_trauma(delta * 0.8)
 		if c > CRACK - 1.2 and world.hud and world.hud.fade_rect.color.a < 0.01:
 			world.hud.fade(1.0, 1.1)
+
+
+## world.gd: the void let go of you (you landed in the next sector).
+func left_void() -> void:
+	if _streaks and is_instance_valid(_streaks):
+		_streaks.queue_free()
+	_streaks = null
 
 
 ## Falling: red streaks rushing up past you in the dark.
