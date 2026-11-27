@@ -35,7 +35,7 @@ func build() -> void:
 	_build_walls(om)
 	# the missions: the door stays shut until all three are done
 	add_mission("master", "take the master key", 1, "")
-	add_mission("keys", "photograph every key, 75+ each", 4)
+	add_mission("keys", "photograph every key, 75+ (the master key counts once taken)", 4)
 	add_mission("stare", "hold a key's gaze, closer than 2 m", 8, "secs")
 	var sp = _cell(start)
 	spawn_player(sp + Vector3(0, 0.2, 0), -PI * 0.5 if has_entry else -PI * 0.75)
@@ -280,6 +280,11 @@ func on_request(pid: int, type: String, args: Array) -> void:
 		mission_set("keys", _key_shots.size(), pid)
 
 
+func _master_counts() -> void:
+	if here() and world.hud:
+		world.hud.subtitle("the master key counts as photographed.   photograph the other keys.", 4.0)
+
+
 func net_event(type: String, args: Array) -> void:
 	match type:
 		"key_taken":
@@ -293,7 +298,9 @@ func net_event(type: String, args: Array) -> void:
 			var hud = world.hud
 			if hud and here():
 				var who = "you" if args[0] == Net.my_id() or not Net.active() else Net.pname(args[0])
-				hud.subtitle("%s took the master key.   they are not patient anymore." % who, 4.0)
+				hud.subtitle("%s took the master key.   they are not patient anymore." % who, 3.4)
+				# after "mission done" has had its moment
+				get_tree().create_timer(3.7).connect("timeout", self, "_master_counts")
 				Audio.play("pickup", -2.0, 0.8)
 				Audio.play("ev_slam", -6.0, 0.7)
 		"shout":
