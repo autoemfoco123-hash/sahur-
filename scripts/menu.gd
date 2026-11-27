@@ -15,6 +15,8 @@ var lobby_box: VBoxContainer
 var host_name: LineEdit
 var join_name: LineEdit
 var join_ip: LineEdit
+var join_code: LineEdit
+var code_label: Label
 var lan_list: VBoxContainer
 var lobby_title: Label
 var lobby_info: Label
@@ -143,7 +145,7 @@ func _build_ui() -> void:
 	host_name = _field(Game.settings.get("name", ""), "operative")
 	host_box.add_child(host_name)
 	host_box.add_child(UI.button("open the lobby", self, "_do_host"))
-	host_box.add_child(UI.label("friends on the same wi-fi see your game in their list.\nover the internet: forward udp 7777 on your router,\nor share a vpn like radmin vpn / zerotier / tailscale.", 13, UI.FAINT))
+	host_box.add_child(UI.label("you get a room code: give it to your friends.\nthey type it in \"join a game\", from anywhere, any network.\non the same wi-fi they also see your game in their list.", 13, UI.FAINT))
 	host_box.add_child(UI.button("‹ back", self, "_show", ["main"], 18))
 	# --- join
 	join_box = VBoxContainer.new()
@@ -152,6 +154,16 @@ func _build_ui() -> void:
 	join_box.add_child(UI.label("your name", 14, UI.SOFT, "medium"))
 	join_name = _field(Game.settings.get("name", ""), "operative")
 	join_box.add_child(join_name)
+	join_box.add_child(UI.label("room code", 14, UI.SOFT, "medium"))
+	var jc = HBoxContainer.new()
+	jc.add_constant_override("separation", 10)
+	join_box.add_child(jc)
+	join_code = _field("", "6 digits")
+	join_code.rect_min_size = Vector2(260, 0)
+	join_code.max_length = 7
+	join_code.connect("text_entered", self, "_do_join_code")
+	jc.add_child(join_code)
+	jc.add_child(UI.button("join room", self, "_do_join_code", [""]))
 	join_box.add_child(UI.label("on your network", 14, UI.SOFT, "medium"))
 	lan_list = VBoxContainer.new()
 	join_box.add_child(lan_list)
@@ -171,6 +183,8 @@ func _build_ui() -> void:
 	box.add_child(lobby_box)
 	lobby_title = UI.label("lobby", 30, UI.WHITE, "thin")
 	lobby_box.add_child(lobby_title)
+	code_label = UI.label("", 28, UI.AMBER, "light")
+	lobby_box.add_child(code_label)
 	lobby_info = UI.label("", 13, UI.SOFT)
 	lobby_box.add_child(lobby_info)
 	# one run, every sector in a row: each exit door opens into the next one
@@ -188,7 +202,7 @@ func _build_ui() -> void:
 	grp.add_child(lobby_players)
 	chat_label = UI.label("", 14, UI.SOFT)
 	chat_label.autowrap = true
-	chat_label.rect_min_size = Vector2(520, 120)
+	chat_label.rect_min_size = Vector2(520, 62)
 	chat_label.valign = Label.VALIGN_BOTTOM
 	lobby_box.add_child(chat_label)
 	chat_field = _field("", "say something…  (enter)")
@@ -223,7 +237,7 @@ func _build_ui() -> void:
 	hint.anchor_top = 1.0
 	hint.anchor_bottom = 1.0
 	hint.margin_left = 90
-	hint.margin_top = -50
+	hint.margin_top = -30
 	root.add_child(hint)
 	Net.connect("players_changed", self, "_refresh_lobby")
 	Net.connect("chat", self, "_on_net_chat")
@@ -282,6 +296,15 @@ func _do_host() -> void:
 
 func _do_join_text(_t: String) -> void:
 	_do_join()
+
+
+func _do_join_code(_t := "") -> void:
+	_save_name(join_name.text)
+	var c = join_code.text.strip_edges().replace(" ", "").replace("-", "")
+	if c.length() != 6 or not c.is_valid_integer():
+		status.text = "a room code has 6 digits"
+		return
+	Net.join_room(c, join_name.text)
 
 
 func _do_join(ip := "") -> void:
@@ -346,6 +369,12 @@ func _refresh_lobby() -> void:
 	if not lobby_box.visible:
 		return
 	lobby_title.text = "lobby · %s" % Net.server_name
+	if Net.room_code != "":
+		code_label.text = "room code  %s %s" % [Net.room_code.substr(0, 3), Net.room_code.substr(3, 3)]
+	elif Net.is_server() and Net.room.mode == "host":
+		code_label.text = "opening the online room…"
+	else:
+		code_label.text = ""
 	if Net.is_server():
 		lobby_info.text = ("your ip: %s  ·  udp %d  ·  %d/%d operatives" % [", ".join(PoolStringArray(Net.local_ips())), Net.PORT, Net.players.size(), Net.MAX_PLAYERS]).to_lower()
 	else:

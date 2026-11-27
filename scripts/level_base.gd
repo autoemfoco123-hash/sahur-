@@ -51,14 +51,18 @@ func enter(_boot: bool) -> void:
 	pass
 
 
-## The start of the run (whatever sector it starts in): you wake up on the floor, and while you
-## get up the goggles power up.
+## The start of the run: the goggles power up. In sector 0 (where every run begins) you wake up
+## on the floor first, and they power up while you get to your feet.
 func boot_goggles_now() -> void:
-	if player():
+	if index == 0 and player():
+		# the run begins in sector 0: you come to on its floor
 		player().wake_up()
-	world.hud.fade(0.0, 0.3)
-	get_tree().create_timer(2.2).connect("timeout", self, "_boot_1")
-	get_tree().create_timer(3.4).connect("timeout", self, "_boot_2")
+		world.hud.fade(0.0, 0.3)
+		get_tree().create_timer(2.2).connect("timeout", self, "_boot_1")
+		get_tree().create_timer(3.4).connect("timeout", self, "_boot_2")
+		return
+	get_tree().create_timer(1.0).connect("timeout", self, "_boot_1")
+	get_tree().create_timer(2.4).connect("timeout", self, "_boot_2")
 
 
 func _boot_1() -> void:

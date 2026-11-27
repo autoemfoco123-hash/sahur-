@@ -14,6 +14,7 @@ var walk_t := 0
 var t0 := 0
 var secs := 60.0
 var fired := {}
+var room_code := ""
 
 
 func _initialize() -> void:
@@ -24,6 +25,8 @@ func _initialize() -> void:
 			pname = a.split("=")[1]
 		elif a.begins_with("ip="):
 			ip = a.split("=")[1]
+		elif a.begins_with("code="):
+			room_code = a.split("=")[1]
 		elif a.begins_with("prefix="):
 			prefix = a.split("=")[1]
 		elif a == "noblur":
@@ -48,6 +51,16 @@ func _idle(_d: float) -> bool:
 		joined = true
 		net.host(pname)
 		print("[", pname, "] hosting")
+	elif n == 30 and not joined and room_code != "":
+		# a room code, read from a file if it is one (the server writes its code there)
+		joined = true
+		var c = room_code
+		var f = File.new()
+		if f.open(c, File.READ) == OK:
+			c = f.get_as_text().strip_edges()
+			f.close()
+		print("[", pname, "] joining room ", c)
+		net.join_room(c, pname)
 	elif n == 30 and ip == "auto":
 		net.start_discovery()
 	elif ip == "auto" and not joined and net.found.size() > 0:

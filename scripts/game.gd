@@ -90,7 +90,7 @@ func _boot_server(args: Array) -> void:
 			n = a.substr(5)
 		elif a.begins_with("level=") and INFO.has(a.substr(6)):
 			Net.level_id = a.substr(6)
-	if Net.host(n, true):
+	if Net.host(n, true, "room" in args):
 		get_tree().change_scene("res://scenes/server.tscn")
 	else:
 		print("[sahur-net] ", Net.last_error)

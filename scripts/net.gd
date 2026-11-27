@@ -7,7 +7,7 @@ extends Node
 ##   the calls, catches, escapes and the end of the round; each player sends its own movement
 ## Every RPC lives on this autoload (/root/Net), so node paths always match on all peers.
 
-const VERSION = "sahur-mp-2"
+const VERSION = "sahur-mp-3"
 const PORT = 7777
 const DISCOVERY_PORT = 7778
 const MAX_PLAYERS = 8
@@ -39,6 +39,8 @@ var found = {}                    # LAN servers: ip -> {name, players, max, play
 var chat_log = []
 var last_error = ""
 var counting = -1                 # countdown seconds left (-1 = not counting)
+var room_code = ""                # the online room's code (room.gd): anyone, any network
+var room                          # room.gd
 
 var _peer: NetworkedMultiplayerENet
 var _my_name = ""
@@ -53,6 +55,12 @@ var _end_t = -1.0
 
 func _ready() -> void:
 	pause_mode = Node.PAUSE_MODE_PROCESS
+	room = load("res://scripts/room.gd").new()
+	room.name = "Room"
+	add_child(room)
+	room.connect("room_open", self, "_on_room_open")
+	room.connect("ready_local", self, "_on_room_ready")
+	room.connect("room_failed", self, "_on_room_failed")
 	get_tree().connect("network_peer_connected", self, "_on_peer_connected")
 	get_tree().connect("network_peer_disconnected", self, "_on_peer_disconnected")
 	get_tree().connect("connected_to_server", self, "_on_connected")
@@ -119,7 +127,8 @@ func _clean(n: String) -> String:
 
 
 # ------------------------------------------------------------------ host / join / leave
-func host(name_: String, as_dedicated := false) -> bool:
+## Open a lobby: on the LAN (udp 7777) and, online, as a room anyone can join by its code.
+func host(name_: String, as_dedicated := false, online := true) -> bool:
 	leave(true)
 	_peer = NetworkedMultiplayerENet.new()
 	if _peer.create_server(PORT, MAX_PLAYERS) != OK:
@@ -137,18 +146,58 @@ func host(name_: String, as_dedicated := false) -> bool:
 	state = LOBBY
 	_start_beacon()
 	_log("server up · udp %d · %s" % [PORT, ", ".join(PoolStringArray(local_ips()))])
+	if online:
+		room.open_host(PORT)
+		emit_signal("message", "opening the online room…")
 	emit_signal("players_changed")
 	return true
 
 
-func join(ip: String, name_: String) -> bool:
+func _on_room_open(c: String) -> void:
+	room_code = c
+	_log("online room open · code %s · relay %s" % [c, room.mqtt.url if room.mqtt else ""])
+	emit_signal("players_changed")
+
+
+## Join an online room by its code (from any network).
+func join_room(c: String, name_: String) -> void:
 	leave(true)
+	_my_name = name_
+	state = CONNECTING
+	emit_signal("message", "looking for room %s…" % c.strip_edges())
+	room.open_player(c)
+
+
+func _on_room_ready(port: int) -> void:
+	room_code = room.code
+	emit_signal("message", "room %s found · connecting…" % room.code)
+	join("127.0.0.1", _my_name, port, true)
+
+
+func _on_room_failed(reason: String) -> void:
+	var was = state
+	if room.mode == "" and was != OFFLINE:
+		if is_server():
+			# the lobby still works on the LAN; only the room is gone
+			room_code = ""
+			emit_signal("message", reason)
+			emit_signal("players_changed")
+			return
+		leave(true)
+		last_error = reason
+		if was == PLAYING:
+			Game.main_menu()
+	emit_signal("failed", reason)
+
+
+func join(ip: String, name_: String, port := PORT, through_room := false) -> bool:
+	leave(true, through_room)
 	ip = ip.strip_edges()
 	if ip == "":
 		emit_signal("failed", "type the host's ip address")
 		return false
 	_peer = NetworkedMultiplayerENet.new()
-	if _peer.create_client(ip, PORT) != OK:
+	if _peer.create_client(ip, port) != OK:
 		emit_signal("failed", "could not start a connection")
 		_peer = null
 		return false
@@ -158,12 +207,16 @@ func join(ip: String, name_: String) -> bool:
 	players = {}
 	chat_log = []
 	state = CONNECTING
-	emit_signal("message", "connecting to %s…" % ip)
+	if not through_room:
+		emit_signal("message", "connecting to %s…" % ip)
 	return true
 
 
-func leave(silent := false) -> void:
+func leave(silent := false, keep_room := false) -> void:
 	_stop_beacon()
+	if not keep_room:
+		room.close()
+		room_code = ""
 	# Never free the peer here: this often runs inside one of its own signals.
 	var np = get_tree().network_peer
 	if np:
@@ -190,8 +243,9 @@ func _on_connected() -> void:
 
 
 func _on_connection_failed() -> void:
+	var via_room = room.mode == "player"
 	leave(true)
-	emit_signal("failed", "could not reach the server (wrong ip, or udp %d blocked?)" % PORT)
+	emit_signal("failed", "could not connect through the online room (try again)" if via_room else "could not reach the server (wrong ip, or udp %d blocked?)" % PORT)
 
 
 func _on_server_disconnected() -> void:
