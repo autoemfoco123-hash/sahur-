@@ -30,8 +30,8 @@ var _num_font: DynamicFont
 func build() -> void:
 	mono = true
 	env({
-		"bg": Color(0, 0, 0), "ambient": Color(1, 1, 1), "ambient_energy": 0.42 if Mats.potato() else 0.3,
-		"fog_color": Color(0, 0, 0), "fog_begin": 4.0, "fog_end": 22.0 if Mats.potato() else 27.0, "fog_curve": 1.3,
+		"bg": Color(0, 0, 0), "ambient": Color(1, 1, 1), "ambient_energy": 0.3,
+		"fog_color": Color(0, 0, 0), "fog_begin": 4.0, "fog_end": 27.0, "fog_curve": 1.3,
 		"tint": Vector3(1.03, 1.0, 0.97), "contrast": 1.18, "saturation": 1.0, "mono": true,
 	})
 	boot_goggles = true

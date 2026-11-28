@@ -508,8 +508,31 @@ func _event(act: String) -> void:
 			dr.position = at + Vector2(0, -90)
 			Input.parse_input_event(dr)
 		print("stick ", act, " center ", at, " player ", w.player.global_transform.origin.round())
+	elif act == "faceenemy":
+		# stand 3.5 m in front of this sector's brainrot, held still, looking at its face
+		var e = null
+		for x in w.enemies:
+			if is_instance_valid(x) and x.sector == w.my_sector:
+				e = x
+				break
+		if e == null:
+			print("no enemy here")
+			return
+		e.frozen = true
+		if "dormant" in e:
+			e.dormant = 999.0
+		var f = -e.global_transform.basis.z
+		f.y = 0
+		f = f.normalized()
+		var at = e.global_transform.origin + f * 3.5
+		at.y = e.global_transform.origin.y + 0.1
+		w.player.global_transform.origin = at
+		var face = e.global_transform.origin + Vector3(0, e.height * 0.8, 0)
+		var to = face - w.player.cam.global_transform.origin
+		w.player.set_look(atan2(-to.x, -to.z), atan2(to.y, Vector2(to.x, to.z).length()))
 	elif act == "noattack":
-		w.levels[w.my_sector]._next_attack = 9999.0
+		if "_next_attack" in w.levels[w.my_sector]:
+			w.levels[w.my_sector]._next_attack = 9999.0
 	elif act == "jumpdown":
 		Input.action_press("jump")
 	elif act == "jumpup":

@@ -18,7 +18,6 @@ uniform float pulse = 0.0;
 uniform float grain = 0.01;
 uniform float nv = 0.0;
 uniform float nv_gain = 22.0;
-uniform bool cheap = false;
 uniform float ca_amount = 1.0;      // chromatic aberration (0 = none)
 uniform float invert = 0.0;         // the world in negative (a 67 call)
 uniform float danger_red = 1.0;     // 0 in the monochrome sectors: danger darkens, never reddens
@@ -79,16 +78,21 @@ void fragment() {
 	col = mix(vec3(l), col, mix(1.0, 0.82, k));
 	col *= mix(vec3(1.0), tint, k);
 
-	// hush nv-7 goggles: auto gain from five probes, sensor noise.
+	// hush nv-7 goggles: auto gain from sixteen probes, sensor noise. The probes run on every
+	// device and quality (the same few texels for every pixel: nearly free): the gain is what
+	// makes a dark scene look the same everywhere, so no machine may skip it.
 	if (nv > 0.001) {
-		float avg = 0.25;
-		if (!cheap) {
-			vec3 pr = texture(SCREEN_TEXTURE, vec2(0.5)).rgb + texture(SCREEN_TEXTURE, vec2(0.25, 0.3)).rgb
-				+ texture(SCREEN_TEXTURE, vec2(0.75, 0.3)).rgb + texture(SCREEN_TEXTURE, vec2(0.25, 0.7)).rgb
-				+ texture(SCREEN_TEXTURE, vec2(0.75, 0.7)).rgb;
-			avg = dot(pr / 5.0, vec3(0.333));
+		// metered on a 4 x 4 grid, every probe capped: a lamp or a white face under one probe
+		// must not darken the whole picture (or make two machines see the scene differently)
+		float avg = 0.0;
+		for (int py = 0; py < 4; py++) {
+			for (int px = 0; px < 4; px++) {
+				vec2 pu = vec2(0.14 + 0.24 * float(px), 0.17 + 0.22 * float(py));
+				avg += min(dot(texture(SCREEN_TEXTURE, pu).rgb, vec3(0.333)), 0.35);
+			}
 		}
-		float gain = clamp(0.2 / max(avg, 0.004), 1.0, nv_gain);
+		avg /= 16.0;
+		float gain = clamp(0.27 / max(avg, 0.004), 1.0, nv_gain);
 		vec3 amp = col * gain;
 		amp = amp / (1.0 + amp * 0.35) * 1.18;
 		float al = dot(amp, vec3(0.299, 0.587, 0.114));

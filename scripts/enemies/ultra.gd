@@ -113,9 +113,8 @@ func _after_setup() -> void:
 	key.translation = Vector3(0, 34, -10)
 	key.rotation_degrees = Vector3(-62, 180, 0)
 	# cold light grazing it from behind, both sides: the wet hide shines along its edges
-	# (one on low, none on potato: each light is one more pass over the whole body)
-	var q = int(Game.settings.gfx)
-	for sd in ([1.0, -1.0] if q >= 2 else ([1.0] if q == 1 else [])):
+	# (the same lights on every quality: it must look the same on every machine)
+	for sd in [1.0, -1.0]:
 		var rim = SpotLight.new()
 		rim.light_color = Color(0.7, 0.78, 0.9)
 		rim.light_energy = 2.6
@@ -223,6 +222,11 @@ func _head_world() -> Vector3:
 	if _j.has("head"):
 		return _j.head.global_transform.origin
 	return global_transform.origin + Vector3(0, UM.FACE_Y, 0)
+
+
+## How hard its red glow burns right now (the hall's floor shows it: level_35.gd).
+func glow_energy() -> float:
+	return _glow.light_energy if _glow else 0.0
 
 
 ## Where its "face" is right now, the middle of the scale (screams come from here).

@@ -187,7 +187,7 @@ static func skin_mat(bone := false) -> ShaderMaterial:
 	if Game.cache.has(key):
 		return Game.cache[key]
 	var m = ShaderMaterial.new()
-	m.shader = Mats.shader("res://scripts/ultra_skin.shader")
+	m.shader = load("res://scripts/ultra_skin.shader")    # per pixel on every quality
 	m.set_shader_param("albedo_tex", load("res://textures/bone_ultra.png" if bone else "res://textures/skin_ultra.png"))
 	m.set_shader_param("normal_tex", load("res://textures/skin_ultra_n.png"))
 	m.set_shader_param("bone", bone)
@@ -374,7 +374,7 @@ func _head(root: Spatial, skin: Material, bone: Material) -> Spatial:
 		pm.mesh = commit({"iron": iron})
 		pan.add_child(pm)
 		var dm = ShaderMaterial.new()
-		dm.shader = Mats.shader("res://scripts/ultra_digit.shader")
+		dm.shader = load("res://scripts/ultra_digit.shader")
 		var num = MeshInstance.new()
 		num.mesh = digits.mesh("6" if i == 0 else "7", DIGIT_H, dm)
 		num.name = "num"
@@ -412,7 +412,6 @@ static func iron_mat() -> SpatialMaterial:
 	m.metallic = 0.85
 	m.roughness = 0.42
 	m.uv1_scale = Vector3(0.6, 0.6, 0.6)
-	m.flags_vertex_lighting = Mats.potato()
 	Game.cache["ultra_iron"] = m
 	return m
 

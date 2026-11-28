@@ -36,6 +36,12 @@ const PIT = [Vector2(5, 5), Vector2(5, 6), Vector2(6, 5), Vector2(6, 6)]
 const ANCHOR_TILES = [Vector2(2, 2), Vector2(9, 2), Vector2(9, 9), Vector2(2, 9)]
 const PILLAR_TILES = [Vector2(4, 2), Vector2(7, 2), Vector2(9, 4), Vector2(9, 7), Vector2(7, 9), Vector2(4, 9), Vector2(2, 7), Vector2(2, 4)]
 const PILLAR_R = 1.8
+const LAMP_N = 8             # the hanging lamps: the same on every quality
+const LAMP_RING = 24.5
+const LAMP_Y = 21.5
+const LAMP_ENERGY = 3.4
+const LAMP_POWER = 0.62      # how bright their pools are on the floor (arena_lit.shader)
+const ARENA_AMBIENT = 0.2
 const SWEEP_R = [6.4, 18.0]
 const MSG = {
 	"slam": "its hand came down on the number you were standing on.\nhush found what was left in the shape of a seven.",
@@ -73,6 +79,8 @@ var _sweeps = []             # this machine: live sweeps to dodge {a0, a1, t, te
 var _call_fx = -1.0
 var _warns = []
 var _tile_mats = {}
+var _wall_m: ShaderMaterial
+var lit_mats = []            # the hall's surfaces (arena_lit.shader); photo.gd turns them up too
 var _mm = {}                 # kind -> MultiMesh (every slab of a kind is one draw)
 var _shaft_mat: ShaderMaterial
 var _ring_shader: Shader
@@ -88,8 +96,8 @@ func build() -> void:
 	extent = Vector2(N * TILE, N * TILE)
 	center = origin + Vector3(extent.x * 0.5, 0, extent.y * 0.5)
 	env({
-		"bg": Color(0, 0, 0), "ambient": Color(1, 1, 1), "ambient_energy": 0.36 if Mats.potato() else 0.26,
-		"fog_color": Color(0.012, 0.012, 0.012), "fog_begin": 14.0, "fog_end": 70.0 if Mats.potato() else 95.0, "fog_curve": 1.25,
+		"bg": Color(0, 0, 0), "ambient": Color(1, 1, 1), "ambient_energy": 0.26,
+		"fog_color": Color(0.012, 0.012, 0.012), "fog_begin": 14.0, "fog_end": 95.0, "fog_curve": 1.25,
 		"tint": Vector3(1.02, 1.0, 0.98), "contrast": 1.22, "saturation": 1.0, "mono": true,
 	})
 	boot_goggles = true
@@ -171,16 +179,55 @@ func _layout_tiles() -> void:
 func _tile_mat(kind: int) -> Material:
 	if _tile_mats.has(kind):
 		return _tile_mats[kind]
-	var m = SpatialMaterial.new()
-	m.albedo_texture = load("res://textures/%s.png" % {6: "tile_6", 7: "tile_7", 0: "tile_safe"}[kind])
-	m.albedo_color = Color(0.82, 0.82, 0.82) if kind != 0 else Color(0.95, 0.95, 0.95)
-	m.roughness = 0.88
-	m.uv1_triplanar = true
-	m.uv1_scale = Vector3.ONE / TILE
-	m.uv1_offset = Vector3(0.5, 0.5, 0.5)
-	m.flags_vertex_lighting = Mats.potato()
+	var m = _lit_mat(0, "res://textures/%s.png" % {6: "tile_6", 7: "tile_7", 0: "tile_safe"}[kind], TILE, 0.82 if kind != 0 else 0.95)
 	_tile_mats[kind] = m
 	return m
+
+
+## The hall's own surfaces are lit in arena_lit.shader (the lamps, the boss's glow, the anchors),
+## never by real lights: the same picture on every machine and quality, in one pass.
+func _lit_mat(mode: int, tex: String, scale: float, tint: float) -> ShaderMaterial:
+	var m = ShaderMaterial.new()
+	m.shader = load("res://scripts/arena_lit.shader")
+	m.set_shader_param("mode", mode)
+	m.set_shader_param("albedo_tex", load(tex))
+	m.set_shader_param("tex_scale", scale)
+	m.set_shader_param("tint", Vector3(tint, tint, tint))
+	m.set_shader_param("center", center)
+	m.set_shader_param("ring_r", LAMP_RING)
+	m.set_shader_param("lamp_y", LAMP_Y - 0.8)
+	m.set_shader_param("lamp_n", LAMP_N)
+	m.set_shader_param("lamp_power", LAMP_POWER)
+	m.set_shader_param("ambient", ARENA_AMBIENT)
+	lit_mats.append(m)
+	return m
+
+
+## Every frame: the lamps' energies (they fail in the last phase), the boss's glow, the anchors.
+func _lit_update() -> void:
+	if lit_mats.empty():
+		return
+	var e = []
+	for k in LAMP_N:
+		e.append(lamps[k].light_energy / LAMP_ENERGY if k < lamps.size() else 1.0)
+	var e0 = Plane(e[0], e[1], e[2], e[3])
+	var e1 = Plane(e[4], e[5], e[6], e[7])
+	var g = Plane(0, 0, 0, 0)
+	if is_instance_valid(ultra) and ultra.model.visible and fight >= 1:
+		var gp = ultra.face_world()
+		g = Plane(gp.x, gp.y, gp.z, ultra.glow_energy() * 0.35)
+	var an = []
+	for i in 4:
+		var a = anchors[i] if i < anchors.size() else null
+		an.append(Plane(a.pos.x, a.pos.y + 3.6, a.pos.z, 1.0 if a.on else 0.0) if a else Plane())
+	for m in lit_mats:
+		m.set_shader_param("lamp_e0", e0)
+		m.set_shader_param("lamp_e1", e1)
+		m.set_shader_param("glow", g)
+		m.set_shader_param("anc0", an[0])
+		m.set_shader_param("anc1", an[1])
+		m.set_shader_param("anc2", an[2])
+		m.set_shader_param("anc3", an[3])
 
 
 func _build_tiles() -> void:
@@ -228,16 +275,10 @@ func _tile_draw(t: Dictionary, at: Vector3) -> void:
 
 
 # ------------------------------------------------------------------ the hall
-func _wall_mat() -> SpatialMaterial:
-	var m = SpatialMaterial.new()
-	m.albedo_texture = load("res://textures/wall_67.png")
-	m.albedo_color = Color(0.62, 0.62, 0.62)
-	m.roughness = 0.95
-	m.uv1_triplanar = true
-	m.flags_world_triplanar = true
-	m.uv1_scale = Vector3.ONE / 3.2
-	m.flags_vertex_lighting = Mats.potato()
-	return m
+func _wall_mat() -> ShaderMaterial:
+	if _wall_m == null:
+		_wall_m = _lit_mat(1, "res://textures/wall_67.png", 3.2, 0.62)
+	return _wall_m
 
 
 func _build_walls() -> void:
@@ -256,12 +297,7 @@ func _build_walls() -> void:
 	# the ceiling, far up in the dark
 	var cm = null
 	if show:
-		cm = SpatialMaterial.new()
-		cm.albedo_texture = load("res://textures/ceiling_67.png")
-		cm.albedo_color = Color(0.3, 0.3, 0.3)
-		cm.uv1_triplanar = true
-		cm.flags_world_triplanar = true
-		cm.uv1_scale = Vector3.ONE / 5.0
+		cm = _lit_mat(1, "res://textures/ceiling_67.png", 5.0, 0.3)
 	Geo.solid(geo if show else world, Vector3(w + 2, 0.6, d + 2), origin + Vector3(w * 0.5, WALL_H + 0.3, d * 0.5), cm, null, show)
 	var doorways = [Vector2(origin.x + w, exit_z)]
 	if has_entry:
@@ -292,10 +328,6 @@ func _build_pit() -> void:
 	for s in [[Vector3(0, -h * 0.5, -half - 0.2), Vector3(half * 2 + 0.8, h, 0.4)], [Vector3(0, -h * 0.5, half + 0.2), Vector3(half * 2 + 0.8, h, 0.4)], [Vector3(-half - 0.2, -h * 0.5, 0), Vector3(0.4, h, half * 2)], [Vector3(half + 0.2, -h * 0.5, 0), Vector3(0.4, h, half * 2)]]:
 		var mi = Models.part(geo, Models.box(s[1]), m, center + s[0])
 		mi.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
-	# a red glow from somewhere far down
-	if int(Game.settings.gfx) >= 2:
-		var gl = Geo.omni(geo, center + Vector3(0, -12, 0), Color(1.0, 0.15, 0.08), 1.3, 20.0)
-		gl.light_cull_mask = Geo.VIS_ACTOR
 
 
 func _build_pillars() -> void:
@@ -373,7 +405,7 @@ func _beam_mat() -> Material:
 
 ## Hanging lamps over the floor, each with a shaft of light under it.
 func _build_lamps() -> void:
-	var n = 4 if Mats.potato() else 8
+	var n = LAMP_N
 	var shade_m = Mats.std(Color(0.05, 0.05, 0.05), 0.5, 0.7)
 	var disc_m = Mats.glow(Color(1, 1, 1), 4.0)
 	disc_m.flags_unshaded = true
@@ -381,14 +413,14 @@ func _build_lamps() -> void:
 		var a = TAU * (k + 0.5) / n
 		# out over the outer floor, cones narrow enough never to reach it (on GLES2 every light
 		# that touches a mesh is another pass over it, whatever its cull mask)
-		var p = center + Vector3(sin(a), 0, cos(a)) * 24.5 + Vector3(0, 21.5, 0)
+		var p = center + Vector3(sin(a), 0, cos(a)) * LAMP_RING + Vector3(0, LAMP_Y, 0)
 		var shade = Models.part(geo, Models.cyl(0.5, 2.0, 1.4, 20, 1), shade_m, p)
 		shade.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
 		Models.part(geo, Models.cyl(1.85, 1.85, 0.05, 20, 1), disc_m, p + Vector3(0, -0.72, 0))
 		Models.part(geo, Models.cyl(0.05, 0.05, WALL_H - p.y, 6, 1), shade_m, p + Vector3(0, (WALL_H - p.y) * 0.5 + 0.7, 0))
 		var sp = SpotLight.new()
 		sp.light_color = Color(1.0, 0.98, 0.95)
-		sp.light_energy = 3.4
+		sp.light_energy = LAMP_ENERGY
 		sp.spot_range = 25.0
 		sp.spot_angle = 30.0
 		sp.spot_attenuation = 1.1
@@ -894,6 +926,8 @@ func _scream_hit() -> void:
 ## Every frame on this machine: the sweeping hands, the falling floor, healing.
 func _process(delta: float) -> void:
 	var h = here()
+	if h or (geo and geo.visible):
+		_lit_update()
 	if h != _here_was:
 		_here_was = h
 		if world.hud and not h:
@@ -967,10 +1001,10 @@ func _process(delta: float) -> void:
 		if _flicker <= 0.0:
 			_flicker = rand_range(0.05, 0.4)
 			for l in lamps:
-				l.light_energy = 3.4 * (rand_range(0.0, 0.4) if randf() < 0.35 else 1.0)
+				l.light_energy = LAMP_ENERGY * (rand_range(0.0, 0.4) if randf() < 0.35 else 1.0)
 	elif fight == 3:
 		for l in lamps:
-			l.light_energy = move_toward(l.light_energy, 3.4, delta)
+			l.light_energy = move_toward(l.light_energy, LAMP_ENERGY, delta)
 
 
 ## Is angle a between b and c (the short way)?

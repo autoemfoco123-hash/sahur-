@@ -356,7 +356,9 @@ func setup_env(c: Dictionary) -> void:
 ## 0 potato (half resolution, few lights, no shadows) · 1 low · 2 high
 func _apply_quality() -> void:
 	var q = int(clamp(int(Game.settings.gfx), 0, 2))
-	env.glow_enabled = q >= 1
+	# the glow is part of the picture the goggles meter: every quality gets it, or the auto gain
+	# would turn one machine's image brighter than another's
+	env.glow_enabled = true
 	for d in get_tree().get_nodes_in_group("dust"):
 		d.emitting = q >= 1
 		d.visible = q >= 1
@@ -369,7 +371,6 @@ func _apply_quality() -> void:
 		post.set_shader_param("fisheye", float(Game.settings.fisheye))
 		post.set_shader_param("blur_amount", float(Game.settings.motion_blur))
 		post.set_shader_param("samples", [1.0, 5.0, 12.0][q])
-		post.set_shader_param("cheap", q == 0)
 		if has_meta("tint"):
 			post.set_shader_param("tint", get_meta("tint"))
 	for lv in levels:

@@ -126,6 +126,10 @@ func _set_gain(g: float) -> void:
 		if b:
 			for m in b.mats:
 				m.set_shader_param("photo_gain", g)
+		var lm = lv.get("lit_mats")
+		if lm:
+			for m in lm:
+				m.set_shader_param("photo_gain", g)
 	if g > 1.0:
 		if _amb0 < 0.0:
 			_amb0 = world.env.ambient_light_energy
