@@ -558,19 +558,19 @@ func send_local_state() -> void:
 	Net.send_state(player.global_transform.origin, player.rotation.y, player.head.rotation.x, flags)
 
 
-func net_player_state(pid: int, pos: Vector3, yaw: float, pitch: float, flags: int) -> void:
+func net_player_state(pid: int, pos: Vector3, yaw: float, pitch: float, flags: int, t := -1) -> void:
 	if avatars.has(pid):
 		var p = Net.players.get(pid)
 		if p == null or (p.alive and not p.escaped):
 			var a = avatars[pid]
 			if a.global_transform.origin.distance_to(pos) > 12.0:
 				a.place(pos, yaw)      # through a door, or back from the dead: no gliding
-			a.net_update(pos, yaw, pitch, flags)
+			a.net_update(pos, yaw, pitch, flags, t)
 
 
-func net_enemy_state(idx: int, pos: Vector3, yaw: float, st: int) -> void:
+func net_enemy_state(idx: int, pos: Vector3, yaw: float, st: int, t := -1) -> void:
 	if idx < enemies.size() and is_instance_valid(enemies[idx]):
-		enemies[idx].net_apply(pos, yaw, st)
+		enemies[idx].net_apply(pos, yaw, st, t)
 
 
 func net_event(type: String, args: Array) -> void:

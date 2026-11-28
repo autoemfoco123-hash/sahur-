@@ -7,13 +7,16 @@ extends Node
 ##   the calls, catches, escapes and the end of the round; each player sends its own movement
 ## Every RPC lives on this autoload (/root/Net), so node paths always match on all peers.
 
-const VERSION = "sahur-mp-4"
+const VERSION = "sahur-mp-5"
 const PORT = 7777
 const DISCOVERY_PORT = 7778
 const MAX_PLAYERS = 8
 const COUNTDOWN = 5
-const SEND_HZ = 20.0
-const ENEMY_HZ = 15.0
+const SEND_HZ = 30.0
+const ENEMY_HZ = 20.0
+# a peer is only given up on after this long without an answer (a slow load, a phone that
+# paused, a relay that blinked must not throw anyone out); a clean quit is still seen at once
+const PEER_TIMEOUT = [64, 20000, 60000]
 const COLORS = [Color(1.0, 0.78, 0.25), Color(0.35, 0.8, 1.0), Color(1.0, 0.45, 0.4), Color(0.55, 1.0, 0.5),
 	Color(0.85, 0.6, 1.0), Color(1.0, 0.65, 0.85), Color(0.92, 0.92, 0.92), Color(0.4, 1.0, 0.85)]
 
@@ -51,10 +54,13 @@ var _listen: PacketPeerUDP
 var _send_t = 0.0
 var _enemy_t = 0.0
 var _end_t = -1.0
+var ping_ms = -1                  # client: round trip to the host
+var _ping_t = 0.0
 
 
 func _ready() -> void:
 	pause_mode = Node.PAUSE_MODE_PROCESS
+	process_priority = 100        # after every other script: flush what they sent this frame
 	room = load("res://scripts/room.gd").new()
 	room.name = "Room"
 	add_child(room)
@@ -131,6 +137,7 @@ func _clean(n: String) -> String:
 func host(name_: String, as_dedicated := false, online := true) -> bool:
 	leave(true)
 	_peer = NetworkedMultiplayerENet.new()
+	_peer.compression_mode = NetworkedMultiplayerENet.COMPRESS_RANGE_CODER
 	if _peer.create_server(PORT, MAX_PLAYERS) != OK:
 		last_error = "could not open udp port %d (is another server running?)" % PORT
 		emit_signal("failed", last_error)
@@ -197,6 +204,7 @@ func join(ip: String, name_: String, port := PORT, through_room := false) -> boo
 		emit_signal("failed", "type the host's ip address")
 		return false
 	_peer = NetworkedMultiplayerENet.new()
+	_peer.compression_mode = NetworkedMultiplayerENet.COMPRESS_RANGE_CODER
 	if _peer.create_client(ip, port) != OK:
 		emit_signal("failed", "could not start a connection")
 		_peer = null
@@ -239,7 +247,15 @@ func _drop_peer(np) -> void:
 
 
 func _on_connected() -> void:
+	_patient(1)
+	ping_ms = -1
 	rpc_id(1, "_hello", _my_name, VERSION)
+
+
+## Give this peer a long time before calling it gone (see PEER_TIMEOUT).
+func _patient(id: int) -> void:
+	if _peer:
+		_peer.set_peer_timeout(id, PEER_TIMEOUT[0], PEER_TIMEOUT[1], PEER_TIMEOUT[2])
 
 
 func _on_connection_failed() -> void:
@@ -257,8 +273,9 @@ func _on_server_disconnected() -> void:
 	emit_signal("failed", last_error)
 
 
-func _on_peer_connected(_id: int) -> void:
-	pass
+func _on_peer_connected(id: int) -> void:
+	if is_server():
+		_patient(id)
 
 
 func _on_peer_disconnected(id: int) -> void:
@@ -453,17 +470,28 @@ func say(t: String) -> void:
 ## Local player -> everyone: position, yaw, pitch, flags (1 crouch, 2 moving).
 func send_state(pos: Vector3, yaw: float, pitch: float, flags: int) -> void:
 	if active():
-		rpc_unreliable("_ps", pos, yaw, pitch, flags)
+		rpc_unreliable("_ps", pos, yaw, pitch, flags, OS.get_ticks_msec() & 0xffff)
 
 
-remote func _ps(pos: Vector3, yaw: float, pitch: float, flags: int) -> void:
+remote func _ps(pos: Vector3, yaw: float, pitch: float, flags: int, t: int) -> void:
 	if world:
-		world.net_player_state(get_tree().get_rpc_sender_id(), pos, yaw, pitch, flags)
+		world.net_player_state(get_tree().get_rpc_sender_id(), pos, yaw, pitch, flags, t)
 
 
-remote func _es(idx: int, pos: Vector3, yaw: float, st: int) -> void:
+remote func _es(idx: int, pos: Vector3, yaw: float, st: int, t: int) -> void:
 	if world:
-		world.net_enemy_state(idx, pos, yaw, st)
+		world.net_enemy_state(idx, pos, yaw, st, t)
+
+
+## Round trip to the host, measured once a second (shown in the hud, logged by the tests).
+remote func _ping_q(t: int) -> void:
+	rpc_unreliable_id(get_tree().get_rpc_sender_id(), "_ping_a", t)
+
+
+remote func _ping_a(t: int) -> void:
+	var r = OS.get_ticks_msec() - t
+	if r >= 0 and r < 10000:
+		ping_ms = r if ping_ms < 0 else int(round(lerp(ping_ms, r, 0.35)))
 
 
 ## Server -> everyone: a game event. Also runs locally on the server.
@@ -679,13 +707,18 @@ func _physics_process(delta: float) -> void:
 				_enemy_t = 1.0 / ENEMY_HZ
 				var i = 0
 				for e in world.net_enemies():
-					rpc_unreliable("_es", i, e.global_transform.origin, e.rotation.y, e.net_state())
+					rpc_unreliable("_es", i, e.global_transform.origin, e.rotation.y, e.net_state(), OS.get_ticks_msec() & 0xffff)
 					i += 1
 		_beacon_t -= delta
 		if _beacon and _beacon_t <= 0.0:
 			_beacon_t = 1.0
 			var info = {"g": "sahur", "v": VERSION, "n": server_name, "p": players.size(), "m": MAX_PLAYERS, "s": state == PLAYING, "port": PORT}
 			_beacon.put_packet(to_json(info).to_utf8())
+	if active() and not is_server() and (state == LOBBY or state == PLAYING):
+		_ping_t -= delta
+		if _ping_t <= 0.0:
+			_ping_t = 1.0
+			rpc_unreliable_id(1, "_ping_q", OS.get_ticks_msec())
 	if state == PLAYING and world and world.player:
 		_send_t -= delta
 		if _send_t <= 0.0:
@@ -694,6 +727,11 @@ func _physics_process(delta: float) -> void:
 
 
 func _process(_d: float) -> void:
+	# a second network poll at the very end of the frame: what the game sent goes out now, not
+	# next frame, and what arrived meanwhile is handled now (the room's proxy runs right after)
+	var np = get_tree().network_peer
+	if np and np.get_connection_status() != NetworkedMultiplayerPeer.CONNECTION_DISCONNECTED:
+		get_tree().multiplayer.poll()
 	if _listen:
 		var changed = false
 		while _listen.get_available_packet_count() > 0:

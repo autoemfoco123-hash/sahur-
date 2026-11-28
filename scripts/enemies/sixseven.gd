@@ -141,6 +141,7 @@ func relocate(pos: Vector3) -> void:
 	global_transform.origin = pos
 	hover_y = pos.y
 	_net_pos = pos
+	_net_vel = Vector3.ZERO
 	velocity = Vector3.ZERO
 	_glitch = 0.3
 	if not puppet:

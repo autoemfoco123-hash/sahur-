@@ -553,6 +553,12 @@ func _process(delta: float) -> void:
 	if _roster_t <= 0.0 and Net.active():
 		_roster_t = 0.5
 		var lines = PoolStringArray()
+		# how this machine is connected: ping, and whether it goes direct or through the relay
+		var pth = Net.room.path() if Net.room else ""
+		if not Net.is_server() and Net.ping_ms >= 0:
+			lines.append("ping %d ms%s" % [Net.ping_ms, (" · " + pth) if pth != "" else ""])
+		elif Net.is_server() and pth != "":
+			lines.append("online · " + pth)
 		for pid in Net.round_ids():
 			var p = Net.players[pid]
 			var si = int(clamp(int(p.get("sector", 0)), 0, Game.LEVELS.size() - 1))

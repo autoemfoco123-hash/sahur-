@@ -17,6 +17,7 @@ var join_name: LineEdit
 var join_ip: LineEdit
 var join_code: LineEdit
 var code_label: Label
+var _info_t = 0.0
 var lan_list: VBoxContainer
 var lobby_title: Label
 var lobby_info: Label
@@ -363,6 +364,17 @@ func _on_countdown(n: int) -> void:
 		status.text = "countdown cancelled"
 
 
+## The line under the code: who is here, and (joined) how good the connection is.
+func _lobby_info() -> void:
+	if Net.is_server():
+		lobby_info.text = ("your ip: %s  ·  udp %d  ·  %d/%d operatives" % [", ".join(PoolStringArray(Net.local_ips())), Net.PORT, Net.players.size(), Net.MAX_PLAYERS]).to_lower()
+	else:
+		var conn = ""
+		if Net.ping_ms >= 0:
+			conn = "  ·  ping %d ms%s" % [Net.ping_ms, ("  ·  " + Net.room.path()) if Net.room.mode == "player" else ""]
+		lobby_info.text = "%d/%d operatives · everyone ready starts the countdown%s" % [Net.players.size(), Net.MAX_PLAYERS, conn]
+
+
 func _refresh_lobby() -> void:
 	if Net.state == Net.LOBBY and not lobby_box.visible and (menu.visible or join_box.visible or host_box.visible):
 		_show("lobby")
@@ -375,10 +387,7 @@ func _refresh_lobby() -> void:
 		code_label.text = "opening the online room…"
 	else:
 		code_label.text = ""
-	if Net.is_server():
-		lobby_info.text = ("your ip: %s  ·  udp %d  ·  %d/%d operatives" % [", ".join(PoolStringArray(Net.local_ips())), Net.PORT, Net.players.size(), Net.MAX_PLAYERS]).to_lower()
-	else:
-		lobby_info.text = "%d/%d operatives · everyone ready starts the countdown" % [Net.players.size(), Net.MAX_PLAYERS]
+	_lobby_info()
 	for c in lobby_players.get_children():
 		c.queue_free()
 	var ids = Net.players.keys()
@@ -450,6 +459,11 @@ func _process(delta: float) -> void:
 		Audio.play("tung", -12.0, 0.7)
 		get_tree().create_timer(0.35).connect("timeout", self, "_lights_on")
 	post.set_shader_param("danger", clamp(1.0 - (cam.translation.z - tung.translation.z) / 30.0, 0.0, 0.7))
+	_info_t -= delta
+	if _info_t <= 0.0:
+		_info_t = 1.0
+		if lobby_box.visible:
+			_lobby_info()
 
 
 func _lights_on() -> void:

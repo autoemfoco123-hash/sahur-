@@ -257,6 +257,20 @@ func _event(act: String) -> void:
 	elif act.begins_with("ph"):
 		var lv = w.levels[w.levels.size() - 1]
 		net.request("photo", ["ultra", int(act.substr(2)), w.enemies.find(lv.ultra)])
+	elif act.begins_with("stall"):
+		# the main thread stops dead (a slow load, a hitch): nothing is polled meanwhile
+		OS.delay_msec(int(act.substr(5)))
+	elif act == "killdirect":
+		# the direct path dies (a router changes its mind): the relay has to carry on
+		var r = net.room
+		if r._wan:
+			r._wan.close()
+		r._wan = null
+		r._direct = ""
+		r.no_direct = true
+	elif act == "net":
+		var r = net.room
+		print("[", pname, "] net state=%d room=%s code=%s mqtt=%s players=%d ping=%d path=%s" % [net.state, r.mode, r.code, str(r.mqtt != null and r.mqtt.is_up), net.players.size(), net.ping_ms, r.path()])
 	elif act == "freeze67":
 		w.levels[3].ss.frozen = true
 

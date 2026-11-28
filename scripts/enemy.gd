@@ -20,6 +20,9 @@ var hunt_id = -1
 var _net_pos = Vector3.ZERO
 var _net_yaw = 0.0
 var _net_have = false
+var _net_vel = Vector3.ZERO
+var _net_t = -1
+var _net_rx = 0
 var _pspd = 0.0
 var drains = true
 var chase_sound = ""
@@ -163,11 +166,20 @@ func apply_net_state(_s: int) -> void:
 	pass
 
 
-func net_apply(pos: Vector3, yaw: float, st: int) -> void:
+func net_apply(pos: Vector3, yaw: float, st: int, t := -1) -> void:
+	if t >= 0 and _net_t >= 0:
+		var dt = ((t - _net_t) & 0xffff) / 1000.0
+		if dt <= 0.0 or dt > 30.0:
+			return                         # an old state that arrived late
+		var v = (pos - _net_pos) / max(dt, 0.001)
+		_net_vel = v if dt < 0.6 and v.length() < 12.0 else Vector3.ZERO
+	_net_t = t
+	_net_rx = OS.get_ticks_msec()
 	_net_pos = pos
 	_net_yaw = yaw
-	if not _net_have:
+	if not _net_have or global_transform.origin.distance_to(pos) > 8.0:
 		_net_have = true
+		_net_vel = Vector3.ZERO
 		global_transform.origin = pos
 		rotation.y = yaw
 	if st != net_state():
@@ -181,9 +193,11 @@ func play_kill(at: Vector3) -> void:
 
 
 func _puppet_step(delta: float) -> void:
+	# where the server has it now: its last state, carried on at its speed until the next
 	var o = global_transform.origin
-	var k = clamp(delta * 10.0, 0.0, 1.0)
-	var np = o.linear_interpolate(_net_pos, k) if _net_have else o
+	var k = clamp(delta * 14.0, 0.0, 1.0)
+	var age = min((OS.get_ticks_msec() - _net_rx) / 1000.0 + 0.03, 0.18)
+	var np = o.linear_interpolate(_net_pos + _net_vel * age, k) if _net_have else o
 	global_transform.origin = np
 	rotation.y = lerp_angle(rotation.y, _net_yaw, k)
 	var v = (np - o) / max(delta, 0.0001)

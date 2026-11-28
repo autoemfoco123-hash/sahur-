@@ -2,13 +2,16 @@ extends Node
 ## A minimal MQTT 3.1.1 client over WebSocket (ws:// or wss://), for the online rooms (room.gd).
 ## QoS 0 only: connect, subscribe, publish (optionally retained), keep-alive pings.
 ## Tries the brokers in order until one answers. (Godot 3)
+## The socket's buffers are big (a long hitch on either side must not overflow them: a dropped
+## frame could tear the MQTT stream); anything that does not parse as MQTT drops the connection,
+## and room.gd reconnects.
 
 signal connected(url)
 signal failed(reason)
 signal message(topic, payload)
 signal closed()
 
-const KEEPALIVE = 30
+const KEEPALIVE = 60
 
 var ws: WebSocketClient
 var urls = []
@@ -49,6 +52,7 @@ func _next() -> void:
 		return
 	url = urls[_try]
 	ws = WebSocketClient.new()
+	ws.set_buffers(4096, 8192, 4096, 8192)
 	ws.connect("connection_established", self, "_on_open")
 	ws.connect("connection_error", self, "_on_error")
 	ws.connect("connection_closed", self, "_on_closed")
@@ -98,7 +102,10 @@ func _on_closed(_clean) -> void:
 
 func _lost() -> void:
 	is_up = false
+	if ws:
+		ws.disconnect_from_host()
 	ws = null
+	_buf = PoolByteArray()
 	emit_signal("closed")
 
 
@@ -126,6 +133,9 @@ func _parse() -> void:
 		if not ok or _buf.size() < i + rl:
 			return
 		var kind = _buf[0] >> 4
+		if kind == 0 or rl > 4 * 1024 * 1024:
+			_lost()            # not MQTT any more: start over
+			return
 		var body = _buf.subarray(i, i + rl - 1) if rl > 0 else PoolByteArray()
 		var head = _buf[0]
 		_buf = _buf.subarray(i + rl, _buf.size() - 1) if _buf.size() > i + rl else PoolByteArray()

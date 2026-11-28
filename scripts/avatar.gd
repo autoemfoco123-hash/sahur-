@@ -22,6 +22,9 @@ var _have = false
 var _ph = 0.0
 var _last_step = 0
 var _prev = Vector3.ZERO
+var _vel = Vector3.ZERO    # how fast it was going between its last two states (to see ahead)
+var _last_t = -1           # the sender's clock on the last state (ms, 16 bits)
+var _last_rx = 0           # when it arrived (our clock)
 
 
 func setup(peer_id: int, pname: String, color: Color, headless := false) -> void:
@@ -51,13 +54,25 @@ func place(pos: Vector3, y: float) -> void:
 	translation = pos
 	_target = pos
 	_prev = pos
+	_vel = Vector3.ZERO
 	yaw = y
 	_tyaw = y
 	rotation.y = y
 	_have = true
 
 
-func net_update(pos: Vector3, y: float, p: float, flags: int) -> void:
+func net_update(pos: Vector3, y: float, p: float, flags: int, t := -1) -> void:
+	if t >= 0 and _last_t >= 0:
+		var dt = ((t - _last_t) & 0xffff) / 1000.0
+		if dt <= 0.0 or dt > 30.0:
+			return                         # older than what we have: it came the long way round
+		if dt < 0.5:
+			var v = (pos - _target) / dt
+			_vel = _vel.linear_interpolate(v if v.length() < 12.0 else Vector3.ZERO, 0.6)
+		else:
+			_vel = Vector3.ZERO
+	_last_t = t
+	_last_rx = OS.get_ticks_msec()
 	_target = pos
 	_tyaw = y
 	_tpitch = p
@@ -78,9 +93,11 @@ func set_spectated(on: bool) -> void:
 
 
 func _process(delta: float) -> void:
-	# smooth toward the last network state (packets come at 20 Hz)
-	var k = clamp(delta * 12.0, 0.0, 1.0)
-	translation = translation.linear_interpolate(_target, k)
+	# smooth toward where it is now: the last state, carried on at its speed for as long as the
+	# next one takes (states come 30 times a second)
+	var age = min((OS.get_ticks_msec() - _last_rx) / 1000.0 + 0.03, 0.18)
+	var k = clamp(delta * 16.0, 0.0, 1.0)
+	translation = translation.linear_interpolate(_target + _vel * age, k)
 	yaw = lerp_angle(yaw, _tyaw, k)
 	pitch = lerp(pitch, _tpitch, k)
 	rotation.y = yaw
