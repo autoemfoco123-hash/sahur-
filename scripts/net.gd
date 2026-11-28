@@ -137,7 +137,6 @@ func _clean(n: String) -> String:
 func host(name_: String, as_dedicated := false, online := true) -> bool:
 	leave(true)
 	_peer = NetworkedMultiplayerENet.new()
-	_peer.compression_mode = NetworkedMultiplayerENet.COMPRESS_RANGE_CODER
 	if _peer.create_server(PORT, MAX_PLAYERS) != OK:
 		last_error = "could not open udp port %d (is another server running?)" % PORT
 		emit_signal("failed", last_error)
@@ -204,7 +203,6 @@ func join(ip: String, name_: String, port := PORT, through_room := false) -> boo
 		emit_signal("failed", "type the host's ip address")
 		return false
 	_peer = NetworkedMultiplayerENet.new()
-	_peer.compression_mode = NetworkedMultiplayerENet.COMPRESS_RANGE_CODER
 	if _peer.create_client(ip, port) != OK:
 		emit_signal("failed", "could not start a connection")
 		_peer = null
@@ -267,7 +265,7 @@ func _on_connection_failed() -> void:
 func _on_server_disconnected() -> void:
 	var was_playing = state == PLAYING
 	leave(true)
-	last_error = "the server closed"
+	last_error = "lost the connection to the host (it closed, or the connection dropped)"
 	if was_playing:
 		Game.main_menu()
 	emit_signal("failed", last_error)
@@ -550,7 +548,17 @@ func request(type: String, args := []) -> void:
 	if is_server():
 		_handle(my_id(), type, args)
 	else:
+		# where I stand, exactly, first (same reliable channel: it gets there before the
+		# request), so "is it next to the tape / the key / the anchor?" is judged on where I
+		# am, not where the server last drew me
+		if world and world.player and not world.my_out:
+			rpc_id(1, "_here", world.player.global_transform.origin)
 		rpc_id(1, "_req", type, args)
+
+
+remote func _here(pos: Vector3) -> void:
+	if world:
+		world.net_snap(get_tree().get_rpc_sender_id(), pos)
 
 
 remote func _req(type: String, args: Array) -> void:

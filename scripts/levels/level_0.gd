@@ -674,7 +674,7 @@ func on_request(pid: int, type: String, args: Array) -> void:
 	if type == "tape":
 		var i = int(args[0]) if args.size() > 0 else -1
 		var t = world.target_by_id(pid)
-		if i < 0 or i >= tapes.size() or _tape_taken.has(i) or t == null or t.pos.distance_to(tapes[i]) > 2.8:
+		if i < 0 or i >= tapes.size() or _tape_taken.has(i) or t == null or t.pos.distance_to(tapes[i]) > 3.6:
 			return
 		_tape_taken[i] = true
 		_emit("tape", [i, pid])

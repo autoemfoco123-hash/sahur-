@@ -486,6 +486,28 @@ func _event(act: String) -> void:
 		var lv = w.levels[w.my_sector]
 		lv._emit("die", [1])
 		lv.mission_set("ultra", 1, 1)
+	elif act == "stickon" or act == "stickoff":
+		# a thumb on the fixed stick, pushed forward (stickoff lifts it)
+		var tc = null
+		for c in root.get_children():
+			for c2 in [c] + c.get_children():
+				if c2.has_method("_stick_center"):
+					tc = c2
+		if tc == null:
+			print("no touch controls")
+			return
+		var at = tc._stick_center()
+		var ev = InputEventScreenTouch.new()
+		ev.index = 0
+		ev.position = at + Vector2(10, 5)
+		ev.pressed = act == "stickon"
+		Input.parse_input_event(ev)
+		if act == "stickon":
+			var dr = InputEventScreenDrag.new()
+			dr.index = 0
+			dr.position = at + Vector2(0, -90)
+			Input.parse_input_event(dr)
+		print("stick ", act, " center ", at, " player ", w.player.global_transform.origin.round())
 	elif act == "noattack":
 		w.levels[w.my_sector]._next_attack = 9999.0
 	elif act == "jumpdown":

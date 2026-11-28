@@ -668,7 +668,7 @@ func on_request(pid: int, type: String, args: Array) -> void:
 			var i = int(args[0]) if args.size() > 0 else -1
 			if i < 0 or i >= anchors.size() or anchors[i].on or fight != 2 or not shield or t == null:
 				return
-			if _flat(t.pos, anchors[i].pos) > 3.2:
+			if _flat(t.pos, anchors[i].pos) > 4.2:
 				return
 			_emit("anchor", [i, pid])
 			var all = true

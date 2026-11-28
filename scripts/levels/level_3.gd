@@ -547,7 +547,7 @@ func on_request(pid: int, type: String, args: Array) -> void:
 	match type:
 		"num":
 			var n = int(args[0]) if args.size() > 0 else -1
-			if not numerals.has(n) or _num_taken.has(n) or t == null or t.pos.distance_to(numerals[n].pos) > 2.8:
+			if not numerals.has(n) or _num_taken.has(n) or t == null or t.pos.distance_to(numerals[n].pos) > 3.6:
 				return
 			_num_taken[n] = pid
 			_emit("num", [n, pid])

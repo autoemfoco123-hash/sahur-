@@ -52,7 +52,6 @@ var _host_port = 7777
 var _cid = ""
 var _token = ""
 var _socks = {}        # host: player id -> {sock, out, seen, token, cands, direct, dseen, sent}
-var _by_addr = {}      # host: "ip:port" on the direct path -> player id
 var _local: PacketPeerUDP
 var _local_port = 0
 var _enet_port = -1
@@ -115,7 +114,6 @@ func close() -> void:
 	for k in _socks:
 		_socks[k].sock.close()
 	_socks = {}
-	_by_addr = {}
 	if _local:
 		_local.close()
 	_local = null
@@ -478,11 +476,7 @@ func _wan_read() -> void:
 		if mode == "player":
 			if cid != _cid or tok != _token:
 				continue
-			if _direct != addr and _direct_alive():
-				continue                   # already through on another address: keep that one
-			if _direct != addr:
-				_direct = addr
-				print("[sahur-net] direct path to the host · %s" % addr)
+			_set_direct(addr)
 			_dseen = now
 			if kind == 0:
 				_send_wan(addr, _probe(1, _cid, _token))
@@ -491,13 +485,7 @@ func _wan_read() -> void:
 			var s = _socks.get(cid)
 			if s == null or s.token == "" or tok != s.token:
 				continue
-			if s.direct != addr and _s_direct(s):
-				continue
-			if s.direct != addr:
-				_by_addr.erase(s.direct)
-				s.direct = addr
-				_by_addr[addr] = cid
-				print("[sahur-net] direct path to %s · %s" % [cid, addr])
+			_set_s_direct(s, cid, addr)
 			s.dseen = now
 			s.seen = now
 			if kind == 0:
@@ -505,23 +493,52 @@ func _wan_read() -> void:
 				s.sent = now
 
 
+## A datagram on the direct path: [2] + the player's id (8) + what ENet sent. It is taken from
+## whatever address it came from (a machine can be reachable on more than one: LAN, public,
+## a NAT that changed its mind), and the answers go back there: both sides always talk to the
+## address the other one last used, so neither can end up sending into the void.
 func _on_wan_data(addr: String, b: PoolByteArray) -> void:
-	var d = b.subarray(1, b.size() - 1) if b.size() > 1 else PoolByteArray()
-	var now = OS.get_ticks_msec()
+	if b.size() < 10:
+		return
+	var cid = b.subarray(1, 8).get_string_from_ascii()
+	var d = b.subarray(9, b.size() - 1) if b.size() > 9 else PoolByteArray()
 	if mode == "player":
-		if addr != _direct or _local == null or _enet_port <= 0:
+		if cid != _cid or _local == null or _enet_port <= 0:
 			return
-		_dseen = now
+		_set_direct(addr)
 		_local.set_dest_address("127.0.0.1", _enet_port)
 		_local.put_packet(d)
 	elif mode == "host":
-		var key = _by_addr.get(addr)
-		var s = _socks.get(key) if key else null
-		if s == null:
+		var s = _socks.get(cid)
+		if s == null or s.token == "":
 			return
-		s.dseen = now
-		s.seen = now
+		_set_s_direct(s, cid, addr)
+		s.seen = OS.get_ticks_msec()
 		s.sock.put_packet(d)
+
+
+func _set_direct(addr: String) -> void:
+	if _direct != addr:
+		if not _direct_alive():
+			print("[sahur-net] direct path to the host · %s" % addr)
+		_direct = addr
+	_dseen = OS.get_ticks_msec()
+
+
+func _set_s_direct(s: Dictionary, cid: String, addr: String) -> void:
+	if s.direct != addr:
+		if not _s_direct(s):
+			print("[sahur-net] direct path to %s · %s" % [cid, addr])
+		s.direct = addr
+	s.dseen = OS.get_ticks_msec()
+	s.seen = s.dseen
+
+
+func _data(cid: String, d: PoolByteArray) -> PoolByteArray:
+	var b = PoolByteArray([2])
+	b.append_array(cid.to_ascii())
+	b.append_array(d)
+	return b
 
 
 ## A STUN answer: our address as the internet sees it, one more way in.
@@ -608,15 +625,12 @@ func _pump() -> void:
 			while s.sock.get_available_packet_count() > 0:
 				var d = s.sock.get_packet()
 				if direct:
-					var b = PoolByteArray([2])
-					b.append_array(d)
-					_send_wan(s.direct, b)
+					_send_wan(s.direct, _data(k, d))
 					s.sent = OS.get_ticks_msec()
 				else:
 					s.out.append(d)
 			if OS.get_ticks_msec() - s.seen > IDLE * 1000.0:
 				s.sock.close()
-				_by_addr.erase(s.direct)
 				_socks.erase(k)
 	elif _local:
 		var direct = _direct_alive()
@@ -624,9 +638,7 @@ func _pump() -> void:
 			var d = _local.get_packet()
 			_enet_port = _local.get_packet_port()
 			if direct:
-				var b = PoolByteArray([2])
-				b.append_array(d)
-				_send_wan(_direct, b)
+				_send_wan(_direct, _data(_cid, d))
 				_dsent = OS.get_ticks_msec()
 			else:
 				_out.append(d)

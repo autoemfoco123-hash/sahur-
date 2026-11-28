@@ -421,7 +421,9 @@ func _refresh_lan() -> void:
 		var f = Net.found[ip]
 		var t = "%s   ·   %d/%d%s   ·   %s" % [f.name, f.players, f.max, "  · in a round" if f.playing else "", ip]
 		if not f.same:
-			t += "   (other version)"
+			# another version would only connect to throw you out: say so instead
+			lan_list.add_child(UI.label(t + "   ·   other version: everyone needs the same download", 15, UI.FAINT))
+			continue
 		lan_list.add_child(UI.button(t, self, "_do_join", [ip], 18))
 
 

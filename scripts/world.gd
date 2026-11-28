@@ -463,8 +463,8 @@ func _targets() -> Array:
 		elif avatars.has(pid):
 			var a = avatars[pid]
 			var fwd = Basis(Vector3.UP, a.yaw).xform(Basis(Vector3.RIGHT, a.pitch).xform(Vector3.FORWARD))
-			var ap = a.global_transform.origin
-			out.append({"id": pid, "pos": ap, "eye": a.eye_pos(), "fwd": fwd, "sector": sector_at(ap)})
+			var ap = a.net_pos()
+			out.append({"id": pid, "pos": ap, "eye": ap + Vector3(0, 1.6 - a.crouch * 0.6, 0), "fwd": fwd, "sector": sector_at(ap)})
 	return out
 
 
@@ -566,6 +566,12 @@ func net_player_state(pid: int, pos: Vector3, yaw: float, pitch: float, flags: i
 			if a.global_transform.origin.distance_to(pos) > 12.0:
 				a.place(pos, yaw)      # through a door, or back from the dead: no gliding
 			a.net_update(pos, yaw, pitch, flags, t)
+
+
+## A client's exact position, sent right before one of its requests.
+func net_snap(pid: int, pos: Vector3) -> void:
+	if avatars.has(pid) and is_instance_valid(avatars[pid]):
+		avatars[pid].net_snap(pos)
 
 
 func net_enemy_state(idx: int, pos: Vector3, yaw: float, st: int, t := -1) -> void:

@@ -649,7 +649,7 @@ func on_request(pid: int, type: String, args: Array) -> void:
 		"beacon":
 			var i = int(args[0]) if args.size() > 0 else -1
 			var t = world.target_by_id(pid)
-			if i < 0 or i >= beacons.size() or _beacon_taken.has(i) or t == null or t.pos.distance_to(beacons[i]) > 3.0:
+			if i < 0 or i >= beacons.size() or _beacon_taken.has(i) or t == null or t.pos.distance_to(beacons[i]) > 3.8:
 				return
 			_beacon_taken[i] = true
 			_emit("beacon", [i, pid])
@@ -658,7 +658,7 @@ func on_request(pid: int, type: String, args: Array) -> void:
 			if scene_t >= 0.0:
 				return
 			var t = world.target_by_id(pid)
-			if t == null or t.pos.distance_to(khaby.global_transform.origin) > 4.5:
+			if t == null or t.pos.distance_to(khaby.global_transform.origin) > 5.5:
 				return
 			if not missions_done():
 				_emit("nope", [pid])

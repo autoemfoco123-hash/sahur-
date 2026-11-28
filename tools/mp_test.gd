@@ -249,6 +249,12 @@ func _event(act: String) -> void:
 		for a in lv.anchors:
 			on += 1 if a.on else 0
 		print("[", pname, "] boss fight=%d hp=%.1f/%.1f phase=%d shield=%s anchors=%d reinf=%d my_sector=%d cells=%.0f out=%s dying=%s" % [lv.fight, lv.hp, lv.hp_max, lv.phase, str(lv.shield), on, lv._reinf, w.my_sector, root.get_node("Game").brain_cells, str(w.my_out), str(w.dying)])
+	elif act.begins_with("instanch"):
+		# straight up to an anchor and press e that same instant (the server must believe it)
+		var lv = w.levels[w.levels.size() - 1]
+		var i = int(act.substr(8))
+		w.player.global_transform.origin = lv.anchors[i].pos + Vector3(1.5, 0.3, 0)
+		lv._use_anchor(i)
 	elif act.begins_with("goanch"):
 		var lv = w.levels[w.levels.size() - 1]
 		w.player.global_transform.origin = lv.anchors[int(act.substr(6))].pos + Vector3(1.5, 0.3, 0)

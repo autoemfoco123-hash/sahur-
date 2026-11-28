@@ -266,7 +266,7 @@ func on_request(pid: int, type: String, args: Array) -> void:
 	if type != "grab" or master == null or master.taken:
 		return
 	var t = world.target_by_id(pid)
-	if t == null or t.pos.distance_to(master.global_transform.origin) > 2.8:
+	if t == null or t.pos.distance_to(master.global_transform.origin) > 3.6:
 		return
 	for k in keys:
 		k.enraged = true

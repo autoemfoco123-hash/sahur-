@@ -81,6 +81,22 @@ func net_update(pos: Vector3, y: float, p: float, flags: int, t := -1) -> void:
 		place(pos, y)
 
 
+## Where this operative really is, as far as the network knows: its last state, carried on at
+## its speed (the drawn body is smoothed and lags a little behind this). The rules use this.
+func net_pos() -> Vector3:
+	if not _have:
+		return translation
+	return _target + _vel * min((OS.get_ticks_msec() - _last_rx) / 1000.0, 0.15)
+
+
+## Its own machine just said exactly where it stands (sent right before a request).
+func net_snap(pos: Vector3) -> void:
+	_target = pos
+	_last_rx = OS.get_ticks_msec()
+	if not _have:
+		place(pos, yaw)
+
+
 func eye_pos() -> Vector3:
 	return global_transform.origin + Vector3(0, 1.6 - crouch * 0.6, 0)
 

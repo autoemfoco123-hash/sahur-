@@ -1,11 +1,12 @@
 extends CanvasLayer
 ## Phone / tablet controls, same minimal language as the hud (Godot 3):
-## left thumb  = floating analog joystick (walk)
-## right thumb = drag to look
+## left thumb  = analog joystick (walk), fixed in the bottom-left corner, always there
+## right thumb = drag to look (anywhere that is not the stick or a button)
 ## tap         = answer him (only while he is calling)
 ## buttons     = e (only when something is interactable) · crouch · pause
 
 const STICK_R = 70.0
+const STICK_GRAB = 2.0       # a touch this many radii from the stick's centre takes it
 
 var world
 var _stick_id = -1
@@ -37,8 +38,6 @@ func _ready() -> void:
 	root.add_child(_base)
 	_knob = _circle(64.0, Color(1, 1, 1, 0.35), Color(1, 1, 1, 0.0))
 	root.add_child(_knob)
-	_base.visible = false
-	_knob.visible = false
 	_btn_e = _add_button("e", "interact", 46.0, Color(1, 1, 1, 0.85), Color(0.08, 0.08, 0.08))
 	var bc = _add_button("crouch", "", 34.0, Color(1, 1, 1, 0.25), Color(1, 1, 1, 0.9))
 	bc.connect("pressed", self, "_on_crouch")
@@ -62,7 +61,15 @@ func _on_pause() -> void:
 		world.set_paused(not world.paused)
 
 
+## Where the stick sits: bottom-left, just above the brain cells.
+func _stick_center() -> Vector2:
+	var vp = get_viewport().get_visible_rect().size
+	return Vector2(140.0, vp.y - 230.0)
+
+
 func _relayout() -> void:
+	_stick_origin = _stick_center()
+	_place_stick()
 	var vp = get_viewport().get_visible_rect().size
 	var spots = [Vector2(vp.x - 130, vp.y - 110), Vector2(vp.x - 115, vp.y - 285), Vector2(vp.x - 90, 150), Vector2(vp.x - 260, vp.y - 150)]
 	for i in _buttons.size():
@@ -134,7 +141,6 @@ func _on_button(pos: Vector2) -> bool:
 func _input(event: InputEvent) -> void:
 	if world == null or world.hud == null:
 		return
-	var vp = get_viewport().get_visible_rect().size
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			if world.hud.note_open:
@@ -142,14 +148,11 @@ func _input(event: InputEvent) -> void:
 				return
 			if _on_button(event.position) or world.paused or world.dying or world.my_out:
 				return
-			if event.position.x < vp.x * 0.45 and _stick_id == -1:
+			if _stick_id == -1 and event.position.distance_to(_stick_center()) < STICK_R * STICK_GRAB:
 				_stick_id = event.index
-				_stick_origin = event.position
-				_stick_vec = Vector2.ZERO
-				_base.visible = true
-				_knob.visible = true
-				_place_stick()
-			elif event.position.x >= vp.x * 0.45 and _look_id == -1:
+				_stick_origin = _stick_center()
+				_stick_drag(event.position)
+			elif _look_id == -1:
 				_look_id = event.index
 				_look_last = event.position
 				_look_start = event.position
@@ -158,8 +161,7 @@ func _input(event: InputEvent) -> void:
 			if event.index == _stick_id:
 				_stick_id = -1
 				_stick_vec = Vector2.ZERO
-				_base.visible = false
-				_knob.visible = false
+				_place_stick()
 				_apply_stick()
 			elif event.index == _look_id:
 				_look_id = -1
@@ -176,14 +178,7 @@ func _input(event: InputEvent) -> void:
 					Input.parse_input_event(ev2)
 	elif event is InputEventScreenDrag:
 		if event.index == _stick_id:
-			var v = event.position - _stick_origin
-			if v.length() > STICK_R:
-				# the stick follows the thumb if it wanders too far
-				_stick_origin += v - v.normalized() * STICK_R
-				v = v.normalized() * STICK_R
-			_stick_vec = v / STICK_R
-			_place_stick()
-			_apply_stick()
+			_stick_drag(event.position)
 		elif event.index == _look_id and world.player and world.player.controls and world.player.look_enabled:
 			var d = event.position - _look_last
 			_look_last = event.position
@@ -195,6 +190,16 @@ func _input(event: InputEvent) -> void:
 func _he_is_calling() -> bool:
 	var l = world.level
 	return l != null and "calling" in l and l.calling and not l.answered
+
+
+## The stick stays where it is: the knob goes toward the thumb, as far as the rim.
+func _stick_drag(pos: Vector2) -> void:
+	var v = pos - _stick_origin
+	if v.length() > STICK_R:
+		v = v.normalized() * STICK_R
+	_stick_vec = v / STICK_R
+	_place_stick()
+	_apply_stick()
 
 
 func _place_stick() -> void:
@@ -223,6 +228,14 @@ func _process(_d: float) -> void:
 	if world == null or world.hud == null:
 		return
 	world.hud._right.visible = false
+	var show = not world.dying and not world.my_out and not world.paused
+	_base.visible = show
+	_knob.visible = show
+	if not show and _stick_id != -1:
+		_stick_id = -1
+		_stick_vec = Vector2.ZERO
+		_place_stick()
+		_apply_stick()
 	_btn_e.visible = world.hud.prompt_box.visible
 	for b in _buttons:
 		if b != _btn_e:
